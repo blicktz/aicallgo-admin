@@ -3,6 +3,8 @@ Businesses - Browse business profiles with filtering
 """
 import streamlit as st
 import pandas as pd
+import logging
+from datetime import datetime
 from config.auth import require_auth
 from database.connection import get_session
 from services.business_service import get_businesses, get_business_by_id, get_industries
@@ -226,26 +228,45 @@ with detail_col:
 st.divider()
 if st.button("📥 Export to CSV", use_container_width=True):
     try:
-        businesses = load_businesses(search_query, industry_filter)
-        businesses_df = pd.DataFrame([
-            {
-                "Business Name": b.business_name or "Unnamed",
-                "Industry": b.industry or "N/A",
-                "Phone": format_phone(b.primary_business_phone_number) if b.primary_business_phone_number else "N/A",
-                "Address": b.primary_address or "N/A",
-                "Website": b.website_url or "N/A",
-                "ID": str(b.id)
-            }
-            for b in businesses
-        ])
+        logger = logging.getLogger(__name__)
 
-        csv = businesses_df.to_csv(index=False)
-        st.download_button(
-            "Download CSV",
-            csv,
-            "businesses.csv",
-            "text/csv",
-            key='download-csv'
-        )
+        with st.spinner("Exporting businesses..."):
+            businesses = load_businesses(search_query, industry_filter)
+
+            if not businesses:
+                st.warning("No businesses to export")
+            else:
+                export_df = pd.DataFrame([
+                    {
+                        "Business Name": b.business_name or "Unnamed",
+                        "Industry": b.industry or "N/A",
+                        "Phone": format_phone(b.primary_business_phone_number) if b.primary_business_phone_number else "N/A",
+                        "Address": b.primary_address or "N/A",
+                        "Website": b.website_url or "N/A",
+                        "Timezone": b.timezone or "N/A",
+                        "Created At": format_datetime(b.created_at) if b.created_at else "N/A",
+                        "Business ID": str(b.id)
+                    }
+                    for b in businesses
+                ])
+
+                csv = export_df.to_csv(index=False)
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+                st.download_button(
+                    label="📥 Download CSV",
+                    data=csv,
+                    file_name=f"businesses_{timestamp}.csv",
+                    mime="text/csv",
+                    key='download-csv',
+                    use_container_width=True
+                )
+
+                st.success(f"✓ Exported {len(export_df)} businesses")
+
+                if len(businesses) >= 100:
+                    st.warning("⚠️ Export limited to 100 businesses. Use filters to export specific businesses.")
+
     except Exception as e:
-        st.error(f"Failed to export: {str(e)}")
+        logger.error(f"CSV export failed: {e}", exc_info=True)
+        st.error(f"❌ Failed to export: {str(e)}")

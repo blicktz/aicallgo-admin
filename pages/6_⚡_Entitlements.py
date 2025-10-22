@@ -25,6 +25,13 @@ if not require_auth():
 st.title("⚡ Entitlements")
 st.markdown("Manage feature access overrides")
 
+# Refresh button
+col1, col2 = st.columns([8, 2])
+with col2:
+    if st.button("🔄 Refresh", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
 # Initialize session state
 if "selected_user_id" not in st.session_state:
     st.session_state.selected_user_id = None

@@ -24,10 +24,10 @@ st.markdown("System overview and key metrics")
 
 # Auto-refresh toggle
 col1, col2 = st.columns([3, 1])
+with col1:
+    st.markdown("")  # Spacer
 with col2:
     auto_refresh = st.checkbox("Auto-refresh (60s)", value=False)
-    if auto_refresh:
-        st.rerun()
 
 # Load data
 @st.cache_data(ttl=60)
@@ -223,6 +223,19 @@ with feed_col2:
 # Refresh button
 st.divider()
 if st.button("🔄 Refresh Data", use_container_width=True):
+    st.cache_data.clear()
+    st.rerun()
+
+# Auto-refresh logic
+if auto_refresh:
+    import time
+    countdown_placeholder = st.empty()
+
+    for remaining in range(60, 0, -1):
+        countdown_placeholder.info(f"🔄 Refreshing in {remaining} seconds...")
+        time.sleep(1)
+
+    # Clear cache and rerun
     st.cache_data.clear()
     st.rerun()
 
