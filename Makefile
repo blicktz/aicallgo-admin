@@ -16,7 +16,7 @@ install: ## Install dependencies with pip
 
 # Running locally (without Docker)
 run: ## Run Streamlit application locally
-	streamlit run app.py
+	streamlit run streamlit_app.py
 
 # Cleaning
 clean: ## Clean up generated files
@@ -34,16 +34,61 @@ clean: ## Clean up generated files
 env-copy: ## Copy .env.example to .env
 	cp .env.example .env
 
-# Production Docker Build (standalone)
-build: ## Build production Docker image (requires web-backend as sibling)
+# Production Docker Build (for CI/CD with GitHub token)
+build: ## Build production Docker image (requires GITHUB_TOKEN for private repo)
 	@echo "Building production Docker image..."
-	@echo "Prerequisites: web-backend repo must exist as sibling directory"
-	@if [ ! -d "../web-backend" ]; then \
-		echo "ERROR: web-backend not found at ../web-backend"; \
-		echo "Please clone web-backend as a sibling directory"; \
+	@echo "Note: This requires GITHUB_TOKEN to clone private web-backend repo"
+	@echo ""
+	@if [ -z "$$GITHUB_TOKEN" ]; then \
+		echo "ERROR: GITHUB_TOKEN environment variable not set"; \
+		echo ""; \
+		echo "For CI/CD: Set GITHUB_TOKEN in GitHub Actions secrets"; \
+		echo "For local testing: Use 'make build-local' instead"; \
+		echo ""; \
 		exit 1; \
 	fi
-	cd .. && docker build -f aicallgo-admin/Dockerfile -t aicallgo-admin:latest .
+	DOCKER_BUILDKIT=1 docker build \
+		--secret id=github_token,env=GITHUB_TOKEN \
+		-t aicallgo-admin:latest .
+	@echo ""
+	@echo "Build complete! Image: aicallgo-admin:latest"
+
+# Local Docker Build (uses local web-backend from infra-repo)
+build-local: ## Build Docker image locally using web-backend submodule
+	@echo "Building Docker image for local testing..."
+	@echo "Using web-backend from ../web-backend (submodule)"
+	@if [ ! -d "../web-backend/app/models" ]; then \
+		echo ""; \
+		echo "ERROR: web-backend not found at ../web-backend"; \
+		echo ""; \
+		echo "Make sure you're in the infra-repo and submodules are initialized:"; \
+		echo "  git submodule update --init --recursive"; \
+		echo ""; \
+		exit 1; \
+	fi
+	cd .. && docker build -f admin-board/Dockerfile.local -t aicallgo-admin:local .
+	@echo ""
+	@echo "Build complete! Image: aicallgo-admin:local"
+	@echo ""
+	@echo "To run: docker run -d -p 8005:8501 --name admin-board aicallgo-admin:local"
+
+# Alternative build with custom web-backend repo/branch (for CI)
+build-custom: ## Build with custom web-backend repository or branch
+	@echo "Building with custom web-backend configuration..."
+	@if [ -z "$$GITHUB_TOKEN" ]; then \
+		echo "ERROR: GITHUB_TOKEN environment variable not set"; \
+		exit 1; \
+	fi
+	@read -p "Enter web-backend repository URL [https://github.com/blicktz/aicallgo-backend-cursor.git]: " repo; \
+	repo=$${repo:-https://github.com/blicktz/aicallgo-backend-cursor.git}; \
+	read -p "Enter web-backend branch [main]: " branch; \
+	branch=$${branch:-main}; \
+	DOCKER_BUILDKIT=1 docker build \
+		--secret id=github_token,env=GITHUB_TOKEN \
+		--build-arg WEB_BACKEND_REPO=$$repo \
+		--build-arg WEB_BACKEND_BRANCH=$$branch \
+		-t aicallgo-admin:latest .
+	@echo ""
 	@echo "Build complete! Image: aicallgo-admin:latest"
 
 # Shared Docker Setup (with webbackend - for development)

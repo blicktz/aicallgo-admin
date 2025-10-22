@@ -1,0 +1,91 @@
+# Example GitHub Actions Workflow for Building Admin Board Docker Image
+#
+# This file shows how to build the production Docker image in GitHub Actions.
+# Copy this to .github/workflows/build-docker.yml in your admin-board repository.
+#
+# Prerequisites:
+# - Add GITHUB_TOKEN as a repository secret (or use the default GITHUB_TOKEN)
+# - Ensure the web-backend repository is accessible with the token
+# - Configure Docker registry credentials if pushing to a registry
+
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          secrets: |
+            github_token=${{ secrets.GITHUB_TOKEN }}
+          build-args: |
+            WEB_BACKEND_REPO=https://github.com/blicktz/aicallgo-backend-cursor.git
+            WEB_BACKEND_BRANCH=main
+
+      - name: Test Docker image
+        if: github.event_name == 'pull_request'
+        run: |
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }} \
+            python3 -c "from database.models import User, Business, CallLog; print('✓ Models imported successfully')"
+
+# Optional: Deploy to Digital Ocean
+#      - name: Deploy to Digital Ocean Kubernetes
+#        if: github.ref == 'refs/heads/main'
+#        env:
+#          KUBECONFIG_CONTENT: ${{ secrets.KUBECONFIG_STAGING }}
+#        run: |
+#          echo "$KUBECONFIG_CONTENT" | base64 -d > /tmp/kubeconfig
+#          export KUBECONFIG=/tmp/kubeconfig
+#          kubectl set image deployment/admin-board \
+#            admin-board=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+#            -n aicallgo-staging
+#          kubectl rollout status deployment/admin-board -n aicallgo-staging
