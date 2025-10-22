@@ -9,6 +9,7 @@ from database.connection import get_session
 from services.user_service import get_user_stats, get_recent_signups
 from services.billing_service import get_billing_stats
 from services.call_log_service import get_call_stats
+from services.agent_service import get_agent_stats
 from components.cards import metric_card, info_card
 from components.charts import line_chart, area_chart
 from utils.formatters import format_currency, format_number_abbrev, humanize_datetime
@@ -36,12 +37,14 @@ def load_dashboard_data():
         user_stats = get_user_stats(session)
         billing_stats = get_billing_stats(session, date_range=30)
         call_stats = get_call_stats(session, date_range=30)
+        agent_stats = get_agent_stats(session)
         recent_users = get_recent_signups(session, limit=5)
 
         return {
             "user_stats": user_stats,
             "billing_stats": billing_stats,
             "call_stats": call_stats,
+            "agent_stats": agent_stats,
             "recent_users": recent_users,
         }
 
@@ -148,6 +151,40 @@ with stat_col4:
         "Avg Duration",
         f"{data['call_stats']['average_duration']:.0f}s",
         help_text="Average call duration in seconds"
+    )
+
+st.divider()
+
+# Agent Metrics Row
+st.markdown("### AI Agent Configuration")
+agent_col1, agent_col2, agent_col3, agent_col4 = st.columns(4)
+
+with agent_col1:
+    metric_card(
+        "Configured Agents",
+        format_number_abbrev(data["agent_stats"]["total_agents"]),
+        help_text="Total AI agents configured"
+    )
+
+with agent_col2:
+    metric_card(
+        "With FAQs",
+        format_number_abbrev(data["agent_stats"]["agents_with_faq"]),
+        help_text="Agents with FAQ items configured"
+    )
+
+with agent_col3:
+    metric_card(
+        "Avg FAQ Count",
+        f"{data['agent_stats']['avg_faq_count']:.1f}",
+        help_text="Average number of FAQs per agent"
+    )
+
+with agent_col4:
+    metric_card(
+        "Call Transfer Enabled",
+        format_number_abbrev(data["agent_stats"]["agents_with_call_transfer"]),
+        help_text="Agents with call transfer feature enabled"
     )
 
 st.divider()

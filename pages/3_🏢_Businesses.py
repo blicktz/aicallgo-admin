@@ -8,7 +8,8 @@ from database.connection import get_session
 from services.business_service import get_businesses, get_business_by_id, get_industries
 from services.user_service import get_user_by_id
 from services.call_log_service import get_calls_by_business
-from utils.formatters import format_datetime, format_phone
+from services.agent_service import get_agent_by_business_id
+from utils.formatters import format_datetime, format_phone, format_tone_badge
 
 # Auth check
 if not require_auth():
@@ -122,11 +123,13 @@ with detail_col:
 
                 user = get_user_by_id(session, str(business.user_id))
                 recent_calls = get_calls_by_business(session, business_id, limit=5)
+                agent = get_agent_by_business_id(session, business_id)
 
                 return {
                     "business": business,
                     "user": user,
-                    "recent_calls": recent_calls
+                    "recent_calls": recent_calls,
+                    "agent": agent
                 }
 
         try:
@@ -163,6 +166,35 @@ with detail_col:
 
                 st.divider()
 
+                # AI Agent info
+                st.markdown("#### AI Agent")
+                if details["agent"]:
+                    agent = details["agent"]
+                    st.markdown(f"**Agent Name:** {agent.agent_name}")
+                    st.markdown(f"**Tone:** {format_tone_badge(agent.tone)}")
+                    st.markdown(f"**Max Duration:** {agent.max_call_duration_minutes} min")
+
+                    # Show enabled features
+                    features = []
+                    if agent.enable_1800_blocking:
+                        features.append("1-800 Blocking")
+                    if agent.enable_sales_detection:
+                        features.append("Sales Detection")
+                    if agent.enable_call_transfer:
+                        features.append("Call Transfer")
+
+                    if features:
+                        st.markdown(f"**Features:** {', '.join(features)}")
+
+                    # Show counts
+                    faq_count = len(agent.faq_list) if agent.faq_list else 0
+                    questions_count = len(agent.custom_questions) if agent.custom_questions else 0
+                    st.markdown(f"**FAQs:** {faq_count} | **Custom Questions:** {questions_count}")
+                else:
+                    st.caption("No AI agent configured")
+
+                st.divider()
+
                 # Business overview
                 if business.business_overview:
                     st.markdown("#### Overview")
@@ -183,7 +215,7 @@ with detail_col:
                 # Quick Actions
                 st.markdown("#### Quick Actions")
                 st.button("📞 View All Calls", disabled=True, help="Go to Call Logs page")
-                st.button("⚙️ View AI Config", disabled=True, help="Coming soon")
+                st.button("🤖 View Agent Details", disabled=True, help="Go to Agents page to see full configuration")
 
         except Exception as e:
             st.error(f"Failed to load business details: {str(e)}")
