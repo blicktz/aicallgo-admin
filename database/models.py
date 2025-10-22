@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 # Add web-backend to Python path
-backend_path = Path(__file__).parent.parent.parent / "web-backend"
+backend_path = Path(__file__).parent.parent / "web-backend"
 sys.path.insert(0, str(backend_path))
 
 # Import all models from web-backend
