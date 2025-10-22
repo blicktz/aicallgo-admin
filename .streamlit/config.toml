@@ -6,6 +6,10 @@ secondaryBackgroundColor = "#f9fafb"  # gray-50
 textColor = "#111827"           # gray-900
 font = "sans serif"
 
+[ui]
+# Use wide layout by default for all pages
+layout = "wide"
+
 [server]
 port = 8501
 enableCORS = false
