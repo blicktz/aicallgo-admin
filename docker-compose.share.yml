@@ -22,6 +22,7 @@ services:
       # App Configuration
       - APP_ENV=development
       - DEBUG=true
+      - SQL_ECHO=false
       - SESSION_TIMEOUT_HOURS=8
 
       # Streamlit Configuration
@@ -29,7 +30,7 @@ services:
       - STREAMLIT_SERVER_ADDRESS=0.0.0.0
     volumes:
       # Live reload for application code
-      - ./app.py:/app/app.py
+      - ./streamlit_app.py:/app/streamlit_app.py
       - ./config:/app/config
       - ./database:/app/database
       - ./static:/app/static
@@ -46,7 +47,7 @@ services:
       - ../web-backend:/app/web-backend
     networks:
       - aicallgo_network  # Join webbackend's network to access shared services
-    command: streamlit run app.py --server.port=8501 --server.address=0.0.0.0 --server.fileWatcherType=poll
+    command: streamlit run streamlit_app.py --server.port=8501 --server.address=0.0.0.0 --server.fileWatcherType=poll
 
 # Use external network created by webbackend
 networks:

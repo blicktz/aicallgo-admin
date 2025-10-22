@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     APP_NAME: str = "AICallGO Admin Board"
     DEBUG: bool = True
 
+    # Database Logging
+    SQL_ECHO: bool = False  # Enable SQL query logging (independent of DEBUG)
+
     # Database Configuration (reuse from web-backend)
     DATABASE_URL: PostgresDsn
 

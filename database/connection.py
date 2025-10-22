@@ -19,7 +19,7 @@ engine = create_engine(
     max_overflow=10,          # Total connections: 15
     pool_pre_ping=True,       # Check connections before use
     pool_recycle=300,         # Recycle after 5 minutes
-    echo=settings.DEBUG       # Log SQL in debug mode
+    echo=settings.SQL_ECHO    # Log SQL queries (controlled independently from DEBUG)
 )
 
 # Create session factory

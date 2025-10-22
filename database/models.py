@@ -5,10 +5,13 @@ This ensures schema consistency - admin board uses exact same models.
 import sys
 from pathlib import Path
 
-# Add web-backend to Python path
+# Add web-backend to Python path FIRST to ensure its 'app' package takes precedence
+# This must be done before any imports from app.models
 backend_path = Path(__file__).parent.parent / "web-backend"
-sys.path.insert(0, str(backend_path))
+if str(backend_path) not in sys.path:
+    sys.path.insert(0, str(backend_path))
 
+# Now import from web-backend's app package
 # Import all models from web-backend
 # See: services/web-backend/app/models/__init__.py for full list
 from app.models import (
