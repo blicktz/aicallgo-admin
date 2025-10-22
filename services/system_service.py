@@ -2,7 +2,7 @@
 System service for health checks and statistics.
 Provides system monitoring and database metrics for Phase 4.
 """
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func, text, join
 from sqlalchemy.orm import Session
 from database.models import (
     User, Business, AIAgentConfiguration, CallLog, Appointment,
@@ -235,8 +235,13 @@ def get_data_quality_metrics(session: Session) -> Dict[str, Any]:
             metrics["users_with_businesses_pct"] = 0
 
         # Users with active agents
+        # AIAgentConfiguration is linked to Business, not directly to User
+        # Need to join through Business to get user_id
         users_with_agents = session.execute(
-            select(func.count(func.distinct(AIAgentConfiguration.user_id)))
+            select(func.count(func.distinct(Business.user_id)))
+            .select_from(
+                join(Business, AIAgentConfiguration, Business.id == AIAgentConfiguration.business_id)
+            )
         ).scalar()
 
         if total_users > 0:
@@ -287,7 +292,7 @@ def get_system_info() -> Dict[str, Any]:
             "platform": platform.system(),
             "platform_version": platform.release(),
             "streamlit_version": st.__version__,
-            "database_url": settings.DATABASE_URL.split("@")[-1] if settings.DATABASE_URL else "N/A",  # Hide credentials
+            "database_url": str(settings.DATABASE_URL).split("@")[-1] if settings.DATABASE_URL else "N/A",  # Hide credentials
             "environment": getattr(settings, "APP_ENV", "unknown"),
             "current_time": datetime.utcnow().isoformat()
         }

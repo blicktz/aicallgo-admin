@@ -75,15 +75,29 @@ def logout():
 def require_auth() -> bool:
     """
     Check if user is authenticated and session is valid.
+    If not authenticated, displays login form and stops execution.
+
     Use this as a gate on protected pages.
 
     Returns:
         bool: True if authenticated and session valid, False otherwise
     """
     init_session_state()
+
+    # Check if authenticated
     if not st.session_state.authenticated:
+        login_form()
+        st.stop()
         return False
-    return check_session_timeout()
+
+    # Check session timeout
+    if not check_session_timeout():
+        st.warning("⚠️ Your session has expired. Please login again.")
+        login_form()
+        st.stop()
+        return False
+
+    return True
 
 
 def login_form():
