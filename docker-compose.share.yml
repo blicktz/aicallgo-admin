@@ -1,0 +1,56 @@
+# Note: version field is obsolete in Docker Compose v2+
+# This compose file is designed to run alongside the webbackend project
+# It shares the PostgreSQL and Redis services via the aicallgo_network
+
+services:
+  # Admin Board Streamlit Application
+  admin_board:
+    build: .
+    container_name: aicallgo_admin_board
+    ports:
+      - "8005:8501"  # Host port 8005 → Container port 8501
+    environment:
+      # Connect to webbackend's PostgreSQL via Docker internal URL
+      - DATABASE_URL=postgresql://postgres:password@aicallgo_postgres:5432/aicallgo_dev
+
+      # Admin Authentication
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
+
+      # App Configuration
+      - APP_ENV=development
+      - DEBUG=true
+      - SESSION_TIMEOUT_HOURS=8
+
+      # Streamlit Configuration
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+    volumes:
+      # Live reload for application code
+      - ./app.py:/app/app.py
+      - ./config:/app/config
+      - ./database:/app/database
+      - ./static:/app/static
+      - ./components:/app/components
+      - ./services:/app/services
+      - ./utils:/app/utils
+      - ./pages:/app/pages
+      - ./.streamlit:/app/.streamlit
+
+      # Mount .env file
+      - ./.env:/app/.env
+
+      # Mount web-backend for model imports
+      - ../web-backend:/app/web-backend
+    networks:
+      - aicallgo_network  # Join webbackend's network to access shared services
+    command: streamlit run app.py --server.port=8501 --server.address=0.0.0.0 --server.fileWatcherType=poll
+
+# Use external network created by webbackend
+networks:
+  aicallgo_network:
+    external: true
+    name: aicallgo_cursor_aicallgo_network
+
+# Note: No volumes or additional services defined here
+# We're using webbackend's PostgreSQL (aicallgo_postgres) and Redis (aicallgo_redis)

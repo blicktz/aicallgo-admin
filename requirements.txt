@@ -1,0 +1,29 @@
+# Core Framework
+streamlit==1.32.0
+streamlit-authenticator==0.3.2
+
+# Database (matching web-backend pyproject.toml)
+sqlalchemy==2.0.23
+asyncpg==0.30.0
+psycopg2-binary==2.9.9
+
+# Security (matching web-backend)
+passlib[bcrypt]==1.7.4
+bcrypt==4.1.2
+
+# Environment & Config
+pydantic==2.5.0
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+
+# Data Processing (for Phase 2+)
+pandas==2.1.4
+numpy==1.26.3
+
+# Charts & Visualization (for Phase 2+)
+plotly==5.18.0
+altair==5.2.0
+
+# Utilities
+pytz==2023.3
+phonenumbers==8.13.26

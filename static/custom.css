@@ -1,0 +1,410 @@
+/*
+ * AICallGO Admin Board Custom Styles
+ * Matches color scheme from services/nextjs-frontend/tailwind.config.ts
+ *
+ * Color Palette:
+ * - Primary (purple/green): #5f8a4e (purple-500), #456535 (purple-600)
+ * - Gray scale: #f9fafb (50), #e5e7eb (200), #6b7280 (500), #111827 (900)
+ * - Accent: #f1f9ef (purple-50), #dff1d9 (purple-100)
+ */
+
+/* ==================== CSS Variables ==================== */
+:root {
+    /* Primary Colors (purple in config, but actually green-toned) */
+    --purple-50: #f1f9ef;
+    --purple-100: #dff1d9;
+    --purple-200: #beddad;
+    --purple-500: #5f8a4e;
+    --purple-600: #456535;
+    --purple-700: #3b542d;
+
+    /* Gray Scale */
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-400: #9ca3af;
+    --gray-500: #6b7280;
+    --gray-600: #4b5563;
+    --gray-900: #111827;
+
+    /* Semantic Colors */
+    --success-bg: var(--purple-50);
+    --success-border: var(--purple-500);
+    --success-text: var(--purple-700);
+    --error-bg: #fef2f2;
+    --error-border: #dc2626;
+    --error-text: #991b1b;
+    --warning-bg: #fffbeb;
+    --warning-border: #f59e0b;
+
+    /* Spacing & Sizing */
+    --radius: 0.5rem;
+    --spacing-xs: 0.5rem;
+    --spacing-sm: 1rem;
+    --spacing-md: 1.5rem;
+    --spacing-lg: 2rem;
+    --spacing-xl: 3rem;
+
+    /* Typography */
+    --font-size-xs: 0.75rem;
+    --font-size-sm: 0.875rem;
+    --font-size-base: 1rem;
+    --font-size-lg: 1.125rem;
+    --font-size-xl: 1.25rem;
+    --font-size-2xl: 1.5rem;
+}
+
+/* ==================== Global Styles ==================== */
+.main {
+    background-color: var(--gray-50) !important;
+    padding: var(--spacing-lg);
+}
+
+/* ==================== Sidebar Styling ==================== */
+[data-testid="stSidebar"] {
+    background-color: #ffffff !important;
+    border-right: 1px solid var(--gray-200) !important;
+    padding-top: var(--spacing-md);
+}
+
+[data-testid="stSidebar"] .block-container {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+}
+
+/* Sidebar header */
+[data-testid="stSidebar"] h2 {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    color: var(--gray-900);
+    margin-bottom: var(--spacing-sm);
+}
+
+/* Sidebar dividers */
+[data-testid="stSidebar"] hr {
+    margin: var(--spacing-md) 0;
+    border-color: var(--gray-200);
+}
+
+/* ==================== Typography ==================== */
+h1, h2, h3, h4, h5, h6 {
+    color: var(--gray-900) !important;
+    font-weight: 600 !important;
+}
+
+h1 {
+    font-size: var(--font-size-2xl) !important;
+    margin-bottom: var(--spacing-md) !important;
+}
+
+h2 {
+    font-size: var(--font-size-xl) !important;
+}
+
+h3 {
+    font-size: var(--font-size-lg) !important;
+}
+
+p {
+    color: var(--gray-600);
+    line-height: 1.6;
+}
+
+/* ==================== Buttons ==================== */
+.stButton button {
+    background-color: var(--purple-500) !important;
+    color: white !important;
+    border-radius: var(--radius) !important;
+    border: none !important;
+    padding: 0.5rem 1rem !important;
+    font-weight: 500 !important;
+    font-size: var(--font-size-sm) !important;
+    transition: background-color 0.2s ease !important;
+}
+
+.stButton button:hover {
+    background-color: var(--purple-600) !important;
+    border: none !important;
+}
+
+.stButton button:active {
+    background-color: var(--purple-700) !important;
+}
+
+/* Secondary button style */
+.stButton button[kind="secondary"] {
+    background-color: var(--gray-200) !important;
+    color: var(--gray-900) !important;
+}
+
+.stButton button[kind="secondary"]:hover {
+    background-color: var(--gray-300) !important;
+}
+
+/* ==================== Cards & Containers ==================== */
+/* Expanders (collapsible sections) */
+.stExpander {
+    background-color: white !important;
+    border: 1px solid var(--gray-200) !important;
+    border-radius: var(--radius) !important;
+    margin-bottom: var(--spacing-sm);
+}
+
+.stExpander [data-testid="stExpanderDetails"] {
+    padding: var(--spacing-md);
+}
+
+/* Containers */
+[data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] {
+    background-color: white;
+    padding: var(--spacing-md);
+    border-radius: var(--radius);
+    border: 1px solid var(--gray-200);
+}
+
+/* ==================== Alerts & Messages ==================== */
+/* Success messages */
+.stSuccess {
+    background-color: var(--success-bg) !important;
+    border-left: 4px solid var(--success-border) !important;
+    border-radius: var(--radius) !important;
+    padding: var(--spacing-sm) var(--spacing-md) !important;
+    color: var(--success-text) !important;
+}
+
+/* Error messages */
+.stError, .stException {
+    background-color: var(--error-bg) !important;
+    border-left: 4px solid var(--error-border) !important;
+    border-radius: var(--radius) !important;
+    padding: var(--spacing-sm) var(--spacing-md) !important;
+    color: var(--error-text) !important;
+}
+
+/* Warning messages */
+.stWarning {
+    background-color: var(--warning-bg) !important;
+    border-left: 4px solid var(--warning-border) !important;
+    border-radius: var(--radius) !important;
+    padding: var(--spacing-sm) var(--spacing-md) !important;
+}
+
+/* Info messages */
+.stInfo {
+    background-color: #eff6ff !important;
+    border-left: 4px solid #3b82f6 !important;
+    border-radius: var(--radius) !important;
+    padding: var(--spacing-sm) var(--spacing-md) !important;
+}
+
+/* ==================== Forms & Inputs ==================== */
+/* Text inputs */
+.stTextInput input, .stTextArea textarea {
+    border: 1px solid var(--gray-200) !important;
+    border-radius: var(--radius) !important;
+    padding: 0.5rem !important;
+    font-size: var(--font-size-base) !important;
+}
+
+.stTextInput input:focus, .stTextArea textarea:focus {
+    border-color: var(--purple-500) !important;
+    box-shadow: 0 0 0 3px rgba(95, 138, 78, 0.1) !important;
+    outline: none !important;
+}
+
+/* Select boxes */
+.stSelectbox select {
+    border: 1px solid var(--gray-200) !important;
+    border-radius: var(--radius) !important;
+    padding: 0.5rem !important;
+}
+
+.stSelectbox select:focus {
+    border-color: var(--purple-500) !important;
+    box-shadow: 0 0 0 3px rgba(95, 138, 78, 0.1) !important;
+}
+
+/* Number inputs */
+.stNumberInput input {
+    border: 1px solid var(--gray-200) !important;
+    border-radius: var(--radius) !important;
+}
+
+/* Date inputs */
+.stDateInput input {
+    border: 1px solid var(--gray-200) !important;
+    border-radius: var(--radius) !important;
+}
+
+/* ==================== Tables & DataFrames ==================== */
+.dataframe {
+    border: 1px solid var(--gray-200) !important;
+    border-radius: var(--radius) !important;
+    overflow: hidden;
+    font-size: var(--font-size-sm) !important;
+}
+
+.dataframe thead th {
+    background-color: var(--gray-50) !important;
+    color: var(--gray-900) !important;
+    font-weight: 600 !important;
+    border-bottom: 2px solid var(--gray-200) !important;
+    padding: 0.75rem !important;
+    text-align: left !important;
+}
+
+.dataframe tbody tr {
+    border-bottom: 1px solid var(--gray-200) !important;
+}
+
+.dataframe tbody tr:hover {
+    background-color: var(--gray-50) !important;
+}
+
+.dataframe tbody td {
+    padding: 0.75rem !important;
+    color: var(--gray-700) !important;
+}
+
+/* Alternating row colors */
+.dataframe tbody tr:nth-child(even) {
+    background-color: var(--gray-50) !important;
+}
+
+/* ==================== Status Badges ==================== */
+.badge-success {
+    background-color: var(--purple-100) !important;
+    color: var(--purple-700) !important;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+    display: inline-block;
+}
+
+.badge-error {
+    background-color: var(--error-bg) !important;
+    color: var(--error-text) !important;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+    display: inline-block;
+}
+
+.badge-warning {
+    background-color: var(--warning-bg) !important;
+    color: #92400e !important;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+    display: inline-block;
+}
+
+.badge-info {
+    background-color: #e0f2fe !important;
+    color: #075985 !important;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+    display: inline-block;
+}
+
+/* ==================== Charts (Plotly/Altair) ==================== */
+.js-plotly-plot {
+    border-radius: var(--radius);
+    border: 1px solid var(--gray-200);
+}
+
+/* ==================== Spinner ==================== */
+.stSpinner > div {
+    border-top-color: var(--purple-500) !important;
+}
+
+/* ==================== Tabs ==================== */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 0.5rem;
+}
+
+.stTabs [data-baseweb="tab"] {
+    color: var(--gray-600) !important;
+    border-bottom: 2px solid transparent !important;
+    padding: 0.5rem 1rem !important;
+}
+
+.stTabs [data-baseweb="tab"]:hover {
+    color: var(--purple-600) !important;
+}
+
+.stTabs [aria-selected="true"] {
+    color: var(--purple-600) !important;
+    border-bottom-color: var(--purple-500) !important;
+}
+
+/* ==================== Metrics ==================== */
+[data-testid="stMetricValue"] {
+    font-size: var(--font-size-2xl) !important;
+    font-weight: 600 !important;
+    color: var(--gray-900) !important;
+}
+
+[data-testid="stMetricLabel"] {
+    font-size: var(--font-size-sm) !important;
+    color: var(--gray-500) !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+[data-testid="stMetricDelta"] {
+    font-size: var(--font-size-sm) !important;
+}
+
+/* ==================== Code Blocks ==================== */
+code {
+    background-color: var(--gray-100) !important;
+    color: var(--gray-900) !important;
+    padding: 0.2rem 0.4rem !important;
+    border-radius: 0.25rem !important;
+    font-size: var(--font-size-sm) !important;
+}
+
+pre {
+    background-color: var(--gray-900) !important;
+    color: var(--gray-100) !important;
+    padding: var(--spacing-md) !important;
+    border-radius: var(--radius) !important;
+    overflow-x: auto;
+}
+
+/* ==================== Links ==================== */
+a {
+    color: var(--purple-600) !important;
+    text-decoration: none !important;
+}
+
+a:hover {
+    color: var(--purple-700) !important;
+    text-decoration: underline !important;
+}
+
+/* ==================== Scrollbar ==================== */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--gray-100);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--gray-300);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--gray-400);
+}

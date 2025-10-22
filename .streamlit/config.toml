@@ -1,0 +1,22 @@
+[theme]
+# Colors matching tailwind.config.ts
+primaryColor = "#5f8a4e"        # purple-500 from frontend
+backgroundColor = "#ffffff"      # white
+secondaryBackgroundColor = "#f9fafb"  # gray-50
+textColor = "#111827"           # gray-900
+font = "sans serif"
+
+[server]
+port = 8501
+enableCORS = false
+enableXsrfProtection = true
+maxUploadSize = 200
+
+[browser]
+gatherUsageStats = false
+serverAddress = "localhost"
+serverPort = 8501
+
+[runner]
+magicEnabled = false
+fastReruns = true
