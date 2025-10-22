@@ -58,7 +58,34 @@
 /* ==================== Global Styles ==================== */
 .main {
     background-color: var(--gray-50) !important;
-    padding: var(--spacing-lg);
+    padding: 0 !important;
+}
+
+/* Override Streamlit's default max-width to use full width - Comprehensive overrides for 1.50.0 */
+.main .block-container {
+    max-width: 100% !important;
+    padding: var(--spacing-md) var(--spacing-lg) !important;
+}
+
+/* Additional width overrides for Streamlit 1.50.0 */
+section.main > div {
+    max-width: 100% !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+
+[data-testid="stAppViewContainer"] > section {
+    max-width: 100% !important;
+}
+
+/* Ensure main content area uses full width */
+.appview-container .main .block-container {
+    max-width: 100% !important;
+}
+
+/* Remove any centering constraints */
+.element-container {
+    max-width: 100% !important;
 }
 
 /* ==================== Sidebar Styling ==================== */
