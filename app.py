@@ -3,7 +3,6 @@ AICallGO Admin Board - Main Application
 Entry point for Streamlit admin dashboard
 """
 import streamlit as st
-import asyncio
 from config.settings import settings
 from config.auth import require_auth, login_form, logout
 from database.connection import check_db_health, get_db_info
@@ -64,13 +63,13 @@ with st.sidebar:
     st.markdown("### System Health")
     if st.button("Check Database", use_container_width=True):
         with st.spinner("Checking connection..."):
-            is_healthy, message = asyncio.run(check_db_health())
+            is_healthy, message = check_db_health()
             if is_healthy:
                 st.success(message)
 
                 # Show database stats
                 with st.expander("Database Statistics"):
-                    db_info = asyncio.run(get_db_info())
+                    db_info = get_db_info()
                     if db_info:
                         col1, col2 = st.columns(2)
                         with col1:
@@ -115,7 +114,7 @@ with col1:
 with col2:
     st.markdown("### ✅ Database")
     st.success("Connected")
-    st.caption(f"PostgreSQL (async)")
+    st.caption(f"PostgreSQL (sync)")
 
 with col3:
     st.markdown("### ✅ Design System")
@@ -128,7 +127,7 @@ st.markdown("## Phase 1 Deliverables")
 
 checklist = [
     ("✅", "Working authentication system", "Login/logout with bcrypt password verification"),
-    ("✅", "Database connection established", "Async SQLAlchemy with connection pooling"),
+    ("✅", "Database connection established", "Sync SQLAlchemy with connection pooling"),
     ("✅", "Custom CSS matching frontend", "Purple/green theme from tailwind.config.ts"),
     ("✅", "Project structure complete", "All directories and base files created"),
 ]
