@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     # Admin Authentication
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD_HASH: str  # bcrypt hash
+    SESSION_SECRET_KEY: str  # Secret key for signing session cookies
     SESSION_TIMEOUT_HOURS: int = 8
 
     # Streamlit Configuration
