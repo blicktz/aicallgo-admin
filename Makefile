@@ -99,5 +99,29 @@ setup: ## Run interactive setup helper
 	python3 setup_helper.py
 
 # Password generation helper
-generate-password: ## Generate bcrypt password hash
+generate-password: ## Generate bcrypt password hash (interactive)
+	@echo "Checking for required dependencies..."
+	@if ! python3 -c "import passlib" 2>/dev/null; then \
+		echo ""; \
+		echo "❌ passlib not installed"; \
+		echo ""; \
+		echo "Please install dependencies first:"; \
+		echo "  pip install -r requirements.txt"; \
+		echo ""; \
+		echo "Then use one of these methods:"; \
+		echo "  1. make setup              (recommended - interactive)"; \
+		echo "  2. make generate-password  (command line)"; \
+		echo "  3. make hash-password PASSWORD='yourpass'  (non-interactive)"; \
+		echo ""; \
+		exit 1; \
+	fi
+	@echo ""
 	@python3 -c "from passlib.context import CryptContext; import getpass; pwd = getpass.getpass('Enter admin password: '); print('\nAdd this to .env:\nADMIN_PASSWORD_HASH=' + CryptContext(schemes=['bcrypt']).hash(pwd))"
+
+hash-password: ## Generate hash for a specific password (non-interactive)
+	@if [ -z "$(PASSWORD)" ]; then \
+		echo "Usage: make hash-password PASSWORD='your-password'"; \
+		echo "Example: make hash-password PASSWORD='MySecurePass123'"; \
+		exit 1; \
+	fi
+	@python3 -c "from passlib.context import CryptContext; print('\nAdd this to .env:\nADMIN_PASSWORD_HASH=' + CryptContext(schemes=['bcrypt']).hash('$(PASSWORD)'))"
