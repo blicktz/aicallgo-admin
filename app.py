@@ -5,7 +5,8 @@ Entry point for Streamlit admin dashboard with persistent sidebar
 import streamlit as st
 from config.settings import settings
 from config.auth import require_auth, login_form, logout
-from database.connection import check_db_health, get_db_info
+from database.connection import check_db_health, get_db_info, get_session
+from services.system_service import generate_system_report
 
 # ====================
 # Page Configuration
@@ -37,17 +38,26 @@ if not require_auth():
 # Define Home Page Content
 # ====================
 def home_page():
-    """Home page content (Phase 1 completion status)"""
+    """Home page - System status and operations overview"""
     st.title("📊 AICallGO Admin Dashboard")
     st.markdown("### Welcome to the Admin Board")
 
     # Welcome message
-    st.info("""
-    **👋 Phase 1 Complete!**
+    st.info("👋 **Quick system overview and health status**")
 
-    This admin board is now connected to the database and ready for development.
-    Use the sidebar to navigate between pages (coming in Phase 2).
-    """)
+    # Load system report
+    @st.cache_data(ttl=60)
+    def load_system_data():
+        """Load system report with caching"""
+        with get_session() as session:
+            return generate_system_report(session)
+
+    with st.spinner("Loading system status..."):
+        try:
+            report = load_system_data()
+        except Exception as e:
+            st.error(f"Failed to load system data: {str(e)}")
+            st.stop()
 
     # System status card
     st.markdown("---")
@@ -59,47 +69,132 @@ def home_page():
         st.caption("Session-based auth with bcrypt")
 
     with col2:
-        st.markdown("### ✅ Database")
-        st.success("Connected")
-        st.caption(f"PostgreSQL (sync)")
+        db_health = report.get("database_health", {})
+        if db_health.get("status") == "connected":
+            st.markdown("### ✅ Database")
+            st.success(f"Connected ({db_health.get('response_time_ms', 0)}ms)")
+            st.caption(f"PostgreSQL")
+        else:
+            st.markdown("### ❌ Database")
+            st.error("Connection failed")
+            st.caption(db_health.get("error", "Unknown error"))
 
     with col3:
         st.markdown("### ✅ Design System")
         st.success("Applied")
         st.caption("Matching Next.js frontend")
 
-    # Phase 1 completion checklist
+    # System Health Dashboard
     st.markdown("---")
-    st.markdown("## Phase 1 Deliverables")
+    st.markdown("## 🏥 System Health Dashboard")
 
-    checklist = [
-        ("✅", "Working authentication system", "Login/logout with bcrypt password verification"),
-        ("✅", "Database connection established", "Sync SQLAlchemy with connection pooling"),
-        ("✅", "Custom CSS matching frontend", "Purple/green theme from tailwind.config.ts"),
-        ("✅", "Project structure complete", "All directories and base files created"),
-    ]
+    growth = report.get("growth_stats", {})
 
-    for status, title, description in checklist:
-        with st.expander(f"{status} {title}"):
-            st.write(description)
+    health_col1, health_col2, health_col3, health_col4 = st.columns(4)
 
-    # Next steps
+    with health_col1:
+        st.metric(
+            "New Users Today",
+            growth.get("new_users_today", 0),
+            help="Users created today"
+        )
+
+    with health_col2:
+        st.metric(
+            "New Calls Today",
+            growth.get("new_calls_today", 0),
+            help="Calls logged today"
+        )
+
+    with health_col3:
+        st.metric(
+            "New Businesses Today",
+            growth.get("new_businesses_today", 0),
+            help="Businesses created today"
+        )
+
+    with health_col4:
+        st.metric(
+            "7-Day Growth",
+            f"{growth.get('new_users_7d', 0)} users",
+            help="New users in last 7 days"
+        )
+
+    # Data Quality & Engagement Metrics
     st.markdown("---")
-    st.markdown("## 🔜 Next Steps: Phase 2")
+    st.markdown("## 📈 User Engagement & Data Quality")
 
-    st.markdown("""
-    **Phase 2 will add read-only pages:**
+    quality = report.get("data_quality", {})
+    counts = report.get("table_counts", {})
 
-    1. **Dashboard** - KPIs, recent activity, charts
-    2. **Users** - Search, view, and browse users
-    3. **Businesses** - Business profiles and configuration
-    4. **Call Logs** - Call history with transcripts
-    5. **Billing** - Subscription and invoice monitoring
+    engage_col1, engage_col2 = st.columns(2)
 
-    **Timeline:** 4-5 days
+    with engage_col1:
+        st.markdown("#### Engagement Rates")
 
-    After Phase 2, we'll evaluate if Streamlit meets needs or if we should migrate to Flask-Admin for Phase 3 (data manipulation features).
-    """)
+        # Users with businesses
+        pct_businesses = quality.get("users_with_businesses_pct", 0)
+        st.metric(
+            "Users with Businesses",
+            f"{pct_businesses}%",
+            f"{quality.get('users_with_businesses_count', 0)} of {counts.get('users_total', 0)}"
+        )
+        st.progress(pct_businesses / 100)
+
+        # Users with agents
+        pct_agents = quality.get("users_with_agents_pct", 0)
+        st.metric(
+            "Users with AI Agents",
+            f"{pct_agents}%",
+            f"{quality.get('users_with_agents_count', 0)} of {counts.get('users_total', 0)}"
+        )
+        st.progress(pct_agents / 100)
+
+        # Users with subscriptions
+        pct_subs = quality.get("users_with_subscriptions_pct", 0)
+        st.metric(
+            "Users with Active Subscriptions",
+            f"{pct_subs}%",
+            f"{quality.get('users_with_subscriptions_count', 0)} of {counts.get('users_total', 0)}"
+        )
+        st.progress(pct_subs / 100)
+
+    with engage_col2:
+        st.markdown("#### Quick Stats")
+
+        stat_col_a, stat_col_b = st.columns(2)
+
+        with stat_col_a:
+            st.metric("Total Users", counts.get("users_total", 0))
+            st.metric("Total Businesses", counts.get("businesses", 0))
+            st.metric("AI Agents", counts.get("ai_agents", 0))
+
+        with stat_col_b:
+            st.metric("Active Subscriptions", counts.get("subscriptions_active", 0))
+            st.metric("Trial Subscriptions", counts.get("subscriptions_trial", 0))
+            st.metric("Total Call Logs", counts.get("call_logs_total", 0))
+
+    # Quick Access Navigation
+    st.markdown("---")
+    st.markdown("## 🚀 Quick Access")
+
+    nav_col1, nav_col2, nav_col3, nav_col4 = st.columns(4)
+
+    with nav_col1:
+        if st.button("👥 View All Users", use_container_width=True):
+            st.switch_page("pages/2_👥_Users.py")
+
+    with nav_col2:
+        if st.button("📞 Recent Call Logs", use_container_width=True):
+            st.switch_page("pages/5_📞_Call_Logs.py")
+
+    with nav_col3:
+        if st.button("💳 Monitor Billing", use_container_width=True):
+            st.switch_page("pages/6_💳_Billing.py")
+
+    with nav_col4:
+        if st.button("🔧 System Diagnostics", use_container_width=True):
+            st.switch_page("pages/10_🔧_System.py")
 
     # System information
     st.markdown("---")
@@ -137,6 +232,7 @@ pages = {
         st.Page("pages/3_🏢_Businesses.py", title="Businesses", icon="🏢"),
         st.Page("pages/4_🤖_Agents.py", title="Agents", icon="🤖"),
         st.Page("pages/5_📞_Call_Logs.py", title="Call Logs", icon="📞"),
+        st.Page("pages/9_📅_Appointments.py", title="Appointments", icon="📅"),
     ],
     "Billing": [
         st.Page("pages/6_💳_Billing.py", title="Billing", icon="💳"),
@@ -145,7 +241,6 @@ pages = {
         st.Page("pages/8_🎟️_Promotions.py", title="Promotions", icon="🎟️"),
     ],
     "System": [
-        st.Page("pages/9_📅_Appointments.py", title="Appointments", icon="📅"),
         st.Page("pages/10_🔧_System.py", title="System", icon="🔧"),
     ],
 }
@@ -158,22 +253,6 @@ with st.sidebar:
     st.header("📊 Admin Board")
     st.write(f"👤 **{st.session_state.username}**")
     st.caption(f"Environment: {settings.APP_ENV}")
-    st.divider()
-
-    # Navigation info
-    st.markdown("### Navigation")
-    st.info("""
-    **Phase 2 Pages** (Coming Soon):
-    - 📊 Dashboard
-    - 👥 Users
-    - 🏢 Businesses
-    - 📞 Call Logs
-    - 💳 Billing
-
-    **Phase 3 Pages** (Coming Later):
-    - ⚡ Entitlements
-    - 💰 Credits
-    """)
     st.divider()
 
     # System Health Check
