@@ -9,13 +9,14 @@ import humanize
 from typing import Optional
 
 
-def format_currency(amount: Optional[Decimal | float | int], currency: str = "USD") -> str:
+def format_currency(amount: Optional[Decimal | float | int], currency: str = "USD", signed: bool = False) -> str:
     """
     Format number as currency with proper symbol and decimals.
 
     Args:
         amount: Amount to format (can be None)
         currency: Currency code (default: USD)
+        signed: If True, always show sign (+ or -) for non-zero values
 
     Returns:
         Formatted string like "$1,234.56" or "$0.00" if None
@@ -24,12 +25,18 @@ def format_currency(amount: Optional[Decimal | float | int], currency: str = "US
         format_currency(1234.56) -> "$1,234.56"
         format_currency(None) -> "$0.00"
         format_currency(-50.25) -> "-$50.25"
+        format_currency(1234.56, signed=True) -> "+$1,234.56"
+        format_currency(-50.25, signed=True) -> "-$50.25"
     """
     if amount is None:
         return "$0.00"
 
     if currency == "USD":
-        return f"${abs(amount):,.2f}" if amount >= 0 else f"-${abs(amount):,.2f}"
+        if amount >= 0:
+            prefix = "+" if signed and amount > 0 else ""
+            return f"{prefix}${abs(amount):,.2f}"
+        else:
+            return f"-${abs(amount):,.2f}"
 
     return f"{amount:,.2f} {currency}"
 
