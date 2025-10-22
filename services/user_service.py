@@ -3,7 +3,7 @@ User service for database operations.
 Provides read-only operations for Phase 2.
 """
 from sqlalchemy import select, func, or_, desc
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from database.models import User
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
@@ -12,8 +12,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-async def get_users(
-    session: AsyncSession,
+def get_users(
+    session: Session,
     limit: int = 50,
     offset: int = 0,
     search_query: Optional[str] = None,
@@ -61,7 +61,7 @@ async def get_users(
         # Apply pagination
         query = query.limit(limit).offset(offset)
 
-        result = await session.execute(query)
+        result = session.execute(query)
         users = result.scalars().all()
 
         return list(users)
@@ -71,7 +71,7 @@ async def get_users(
         raise
 
 
-async def get_user_by_id(session: AsyncSession, user_id: str) -> Optional[User]:
+def get_user_by_id(session: Session, user_id: str) -> Optional[User]:
     """
     Get user by ID with all relationships loaded.
 
@@ -84,7 +84,7 @@ async def get_user_by_id(session: AsyncSession, user_id: str) -> Optional[User]:
     """
     try:
         query = select(User).where(User.id == user_id)
-        result = await session.execute(query)
+        result = session.execute(query)
         return result.scalar_one_or_none()
 
     except Exception as e:
@@ -92,7 +92,7 @@ async def get_user_by_id(session: AsyncSession, user_id: str) -> Optional[User]:
         raise
 
 
-async def get_user_by_email(session: AsyncSession, email: str) -> Optional[User]:
+def get_user_by_email(session: Session, email: str) -> Optional[User]:
     """
     Get user by email address.
 
@@ -105,7 +105,7 @@ async def get_user_by_email(session: AsyncSession, email: str) -> Optional[User]
     """
     try:
         query = select(User).where(User.email == email)
-        result = await session.execute(query)
+        result = session.execute(query)
         return result.scalar_one_or_none()
 
     except Exception as e:
@@ -113,7 +113,7 @@ async def get_user_by_email(session: AsyncSession, email: str) -> Optional[User]
         raise
 
 
-async def get_user_stats(session: AsyncSession) -> Dict[str, Any]:
+def get_user_stats(session: Session) -> Dict[str, Any]:
     """
     Get user statistics for dashboard.
 
@@ -127,24 +127,24 @@ async def get_user_stats(session: AsyncSession) -> Dict[str, Any]:
     try:
         # Total users
         total_query = select(func.count(User.id))
-        total_result = await session.execute(total_query)
+        total_result = session.execute(total_query)
         total_users = total_result.scalar()
 
         # Active users
         active_query = select(func.count(User.id)).where(User.is_active == True)
-        active_result = await session.execute(active_query)
+        active_result = session.execute(active_query)
         active_users = active_result.scalar()
 
         # New users in last 7 days
         week_ago = datetime.utcnow() - timedelta(days=7)
         new_7d_query = select(func.count(User.id)).where(User.created_at >= week_ago)
-        new_7d_result = await session.execute(new_7d_query)
+        new_7d_result = session.execute(new_7d_query)
         new_users_7d = new_7d_result.scalar()
 
         # New users in last 30 days
         month_ago = datetime.utcnow() - timedelta(days=30)
         new_30d_query = select(func.count(User.id)).where(User.created_at >= month_ago)
-        new_30d_result = await session.execute(new_30d_query)
+        new_30d_result = session.execute(new_30d_query)
         new_users_30d = new_30d_result.scalar()
 
         return {
@@ -159,7 +159,7 @@ async def get_user_stats(session: AsyncSession) -> Dict[str, Any]:
         raise
 
 
-async def get_recent_signups(session: AsyncSession, limit: int = 10) -> List[User]:
+def get_recent_signups(session: Session, limit: int = 10) -> List[User]:
     """
     Get most recent user signups.
 
@@ -172,7 +172,7 @@ async def get_recent_signups(session: AsyncSession, limit: int = 10) -> List[Use
     """
     try:
         query = select(User).order_by(desc(User.created_at)).limit(limit)
-        result = await session.execute(query)
+        result = session.execute(query)
         return list(result.scalars().all())
 
     except Exception as e:

@@ -3,7 +3,7 @@ Call log service for database operations.
 Provides read-only operations for Phase 2.
 """
 from sqlalchemy import select, func, desc
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from database.models import CallLog
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
@@ -12,8 +12,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-async def get_call_logs(
-    session: AsyncSession,
+def get_call_logs(
+    session: Session,
     limit: int = 50,
     offset: int = 0,
     status_filter: Optional[str] = None,
@@ -60,7 +60,7 @@ async def get_call_logs(
         # Apply pagination
         query = query.limit(limit).offset(offset)
 
-        result = await session.execute(query)
+        result = session.execute(query)
         call_logs = result.scalars().all()
 
         return list(call_logs)
@@ -70,7 +70,7 @@ async def get_call_logs(
         raise
 
 
-async def get_call_log_by_id(session: AsyncSession, call_id: str) -> Optional[CallLog]:
+def get_call_log_by_id(session: Session, call_id: str) -> Optional[CallLog]:
     """
     Get call log by ID.
 
@@ -83,7 +83,7 @@ async def get_call_log_by_id(session: AsyncSession, call_id: str) -> Optional[Ca
     """
     try:
         query = select(CallLog).where(CallLog.id == call_id)
-        result = await session.execute(query)
+        result = session.execute(query)
         return result.scalar_one_or_none()
 
     except Exception as e:
@@ -91,8 +91,8 @@ async def get_call_log_by_id(session: AsyncSession, call_id: str) -> Optional[Ca
         raise
 
 
-async def get_calls_by_business(
-    session: AsyncSession,
+def get_calls_by_business(
+    session: Session,
     business_id: str,
     limit: int = 50
 ) -> List[CallLog]:
@@ -114,7 +114,7 @@ async def get_calls_by_business(
             .order_by(desc(CallLog.call_start_time))
             .limit(limit)
         )
-        result = await session.execute(query)
+        result = session.execute(query)
         return list(result.scalars().all())
 
     except Exception as e:
@@ -122,8 +122,8 @@ async def get_calls_by_business(
         raise
 
 
-async def get_call_stats(
-    session: AsyncSession,
+def get_call_stats(
+    session: Session,
     date_range: int = 30
 ) -> Dict[str, Any]:
     """
@@ -148,7 +148,7 @@ async def get_call_stats(
         total_query = select(func.count(CallLog.id)).where(
             CallLog.call_start_time >= cutoff_date
         )
-        total_result = await session.execute(total_query)
+        total_result = session.execute(total_query)
         total_calls = total_result.scalar()
 
         # Calls by status
@@ -156,21 +156,21 @@ async def get_call_stats(
             CallLog.call_start_time >= cutoff_date,
             CallLog.call_status == "answered_by_ai"
         )
-        answered_result = await session.execute(answered_query)
+        answered_result = session.execute(answered_query)
         answered_by_ai = answered_result.scalar()
 
         forwarded_query = select(func.count(CallLog.id)).where(
             CallLog.call_start_time >= cutoff_date,
             CallLog.call_status == "forwarded"
         )
-        forwarded_result = await session.execute(forwarded_query)
+        forwarded_result = session.execute(forwarded_query)
         forwarded = forwarded_result.scalar()
 
         missed_query = select(func.count(CallLog.id)).where(
             CallLog.call_start_time >= cutoff_date,
             CallLog.call_status == "missed"
         )
-        missed_result = await session.execute(missed_query)
+        missed_result = session.execute(missed_query)
         missed = missed_result.scalar()
 
         # Average call duration
@@ -178,7 +178,7 @@ async def get_call_stats(
             CallLog.call_start_time >= cutoff_date,
             CallLog.call_duration_seconds.isnot(None)
         )
-        avg_duration_result = await session.execute(avg_duration_query)
+        avg_duration_result = session.execute(avg_duration_query)
         average_duration = avg_duration_result.scalar() or 0
 
         return {
@@ -194,7 +194,7 @@ async def get_call_stats(
         raise
 
 
-async def get_recent_calls(session: AsyncSession, limit: int = 10) -> List[CallLog]:
+def get_recent_calls(session: Session, limit: int = 10) -> List[CallLog]:
     """
     Get most recent calls.
 
@@ -207,7 +207,7 @@ async def get_recent_calls(session: AsyncSession, limit: int = 10) -> List[CallL
     """
     try:
         query = select(CallLog).order_by(desc(CallLog.call_start_time)).limit(limit)
-        result = await session.execute(query)
+        result = session.execute(query)
         return list(result.scalars().all())
 
     except Exception as e:

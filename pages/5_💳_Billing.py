@@ -2,10 +2,9 @@
 Billing - Read-only monitoring of subscriptions and invoices
 """
 import streamlit as st
-import asyncio
 import pandas as pd
 from config.auth import require_auth
-from database.connection import get_async_session
+from database.connection import get_session
 from services.billing_service import (
     get_subscriptions,
     get_invoices,
@@ -40,10 +39,8 @@ st.markdown("### Billing Metrics")
 @st.cache_data(ttl=60)
 def load_billing_stats():
     """Load billing statistics"""
-    async def fetch():
-        async with get_async_session() as session:
-            return await get_billing_stats(session, date_range=30)
-    return asyncio.run(fetch())
+    with get_session() as session:
+        return get_billing_stats(session, date_range=30)
 
 try:
     billing_stats = load_billing_stats()
@@ -106,15 +103,13 @@ with tab1:
     @st.cache_data(ttl=60)
     def load_subscriptions(status):
         """Load subscriptions with filters"""
-        async def fetch():
-            async with get_async_session() as session:
-                return await get_subscriptions(
-                    session,
-                    limit=100,
-                    offset=0,
-                    status_filter=status if status != "all" else None
-                )
-        return asyncio.run(fetch())
+        with get_session() as session:
+            return get_subscriptions(
+                session,
+                limit=100,
+                offset=0,
+                status_filter=status if status != "all" else None
+            )
 
     try:
         subscriptions = load_subscriptions(sub_status_filter)
@@ -187,15 +182,13 @@ with tab2:
     @st.cache_data(ttl=60)
     def load_invoices(status):
         """Load invoices with filters"""
-        async def fetch():
-            async with get_async_session() as session:
-                return await get_invoices(
-                    session,
-                    limit=100,
-                    offset=0,
-                    status_filter=status if status != "all" else None
-                )
-        return asyncio.run(fetch())
+        with get_session() as session:
+            return get_invoices(
+                session,
+                limit=100,
+                offset=0,
+                status_filter=status if status != "all" else None
+            )
 
     try:
         invoices = load_invoices(inv_status_filter)

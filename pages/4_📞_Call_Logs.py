@@ -2,11 +2,10 @@
 Call Logs - Browse call records with transcript viewer
 """
 import streamlit as st
-import asyncio
 import pandas as pd
 from datetime import datetime, timedelta
 from config.auth import require_auth
-from database.connection import get_async_session
+from database.connection import get_session
 from services.call_log_service import get_call_logs
 from utils.formatters import format_datetime, format_phone, format_duration, format_status_badge
 
@@ -50,19 +49,17 @@ elif date_range == "90 days":
 @st.cache_data(ttl=60)
 def load_call_logs(status, phone, date_from_str):
     """Load call logs with filters"""
-    async def fetch():
-        async with get_async_session() as session:
-            # Convert date string back to datetime if needed
-            date_from_dt = datetime.fromisoformat(date_from_str) if date_from_str else None
-            return await get_call_logs(
-                session,
-                limit=100,
-                offset=0,
-                status_filter=status if status != "all" else None,
-                phone_search=phone if phone else None,
-                date_from=date_from_dt
-            )
-    return asyncio.run(fetch())
+    with get_session() as session:
+        # Convert date string back to datetime if needed
+        date_from_dt = datetime.fromisoformat(date_from_str) if date_from_str else None
+        return get_call_logs(
+            session,
+            limit=100,
+            offset=0,
+            status_filter=status if status != "all" else None,
+            phone_search=phone if phone else None,
+            date_from=date_from_dt
+        )
 
 try:
     # Convert datetime to string for caching

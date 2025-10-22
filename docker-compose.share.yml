@@ -13,7 +13,7 @@ services:
       - "8005:8501"  # Host port 8005 → Container port 8501
     environment:
       # Connect to webbackend's PostgreSQL via Docker internal URL
-      - DATABASE_URL=postgresql+asyncpg://postgres:password@aicallgo_postgres:5432/aicallgo_dev
+      - DATABASE_URL=postgresql://postgres:password@aicallgo_postgres:5432/aicallgo_dev
 
       # Admin Authentication
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}

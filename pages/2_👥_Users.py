@@ -2,10 +2,9 @@
 Users - User browsing with search and detail view
 """
 import streamlit as st
-import asyncio
 import pandas as pd
 from config.auth import require_auth
-from database.connection import get_async_session
+from database.connection import get_session
 from services.user_service import get_users, get_user_by_id
 from services.business_service import get_businesses_by_user
 from services.billing_service import get_subscription_by_user, get_credit_balance
@@ -40,18 +39,16 @@ if "selected_user_id" not in st.session_state:
 @st.cache_data(ttl=60)
 def load_users(search, plan, status, page_num, per_page):
     """Load users with filters"""
-    async def fetch():
-        async with get_async_session() as session:
-            offset = page_num * per_page
-            return await get_users(
-                session,
-                limit=per_page,
-                offset=offset,
-                search_query=search if search else None,
-                plan_filter=plan if plan != "all" else None,
-                status_filter=status if status != "all" else None
-            )
-    return asyncio.run(fetch())
+    with get_session() as session:
+        offset = page_num * per_page
+        return get_users(
+            session,
+            limit=per_page,
+            offset=offset,
+            search_query=search if search else None,
+            plan_filter=plan if plan != "all" else None,
+            status_filter=status if status != "all" else None
+        )
 
 # Main layout: table + detail panel
 table_col, detail_col = st.columns([7, 3])
@@ -111,23 +108,21 @@ with detail_col:
         @st.cache_data(ttl=60)
         def load_user_details(user_id):
             """Load user details with related data"""
-            async def fetch():
-                async with get_async_session() as session:
-                    user = await get_user_by_id(session, user_id)
-                    if not user:
-                        return None
+            with get_session() as session:
+                user = get_user_by_id(session, user_id)
+                if not user:
+                    return None
 
-                    businesses = await get_businesses_by_user(session, user_id)
-                    subscription = await get_subscription_by_user(session, user_id)
-                    credit_balance = await get_credit_balance(session, user_id)
+                businesses = get_businesses_by_user(session, user_id)
+                subscription = get_subscription_by_user(session, user_id)
+                credit_balance = get_credit_balance(session, user_id)
 
-                    return {
-                        "user": user,
-                        "businesses": businesses,
-                        "subscription": subscription,
-                        "credit_balance": credit_balance
-                    }
-            return asyncio.run(fetch())
+                return {
+                    "user": user,
+                    "businesses": businesses,
+                    "subscription": subscription,
+                    "credit_balance": credit_balance
+                }
 
         try:
             details = load_user_details(st.session_state.selected_user_id)

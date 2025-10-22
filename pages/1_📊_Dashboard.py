@@ -2,11 +2,10 @@
 Dashboard - System overview with KPIs and charts
 """
 import streamlit as st
-import asyncio
 import pandas as pd
 from datetime import datetime, timedelta
 from config.auth import require_auth
-from database.connection import get_async_session
+from database.connection import get_session
 from services.user_service import get_user_stats, get_recent_signups
 from services.billing_service import get_billing_stats
 from services.call_log_service import get_call_stats
@@ -33,21 +32,18 @@ with col2:
 @st.cache_data(ttl=60)
 def load_dashboard_data():
     """Load all dashboard data with caching"""
-    async def fetch_data():
-        async with get_async_session() as session:
-            user_stats = await get_user_stats(session)
-            billing_stats = await get_billing_stats(session, date_range=30)
-            call_stats = await get_call_stats(session, date_range=30)
-            recent_users = await get_recent_signups(session, limit=5)
+    with get_session() as session:
+        user_stats = get_user_stats(session)
+        billing_stats = get_billing_stats(session, date_range=30)
+        call_stats = get_call_stats(session, date_range=30)
+        recent_users = get_recent_signups(session, limit=5)
 
-            return {
-                "user_stats": user_stats,
-                "billing_stats": billing_stats,
-                "call_stats": call_stats,
-                "recent_users": recent_users,
-            }
-
-    return asyncio.run(fetch_data())
+        return {
+            "user_stats": user_stats,
+            "billing_stats": billing_stats,
+            "call_stats": call_stats,
+            "recent_users": recent_users,
+        }
 
 with st.spinner("Loading dashboard..."):
     try:

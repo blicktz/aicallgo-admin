@@ -2,10 +2,9 @@
 Businesses - Browse business profiles with filtering
 """
 import streamlit as st
-import asyncio
 import pandas as pd
 from config.auth import require_auth
-from database.connection import get_async_session
+from database.connection import get_session
 from services.business_service import get_businesses, get_business_by_id, get_industries
 from services.user_service import get_user_by_id
 from services.call_log_service import get_calls_by_business
@@ -26,11 +25,9 @@ with col1:
     # Load industries for filter
     @st.cache_data(ttl=300)
     def load_industries():
-        async def fetch():
-            async with get_async_session() as session:
-                industries = await get_industries(session)
-                return ["all"] + list(industries)
-        return asyncio.run(fetch())
+        with get_session() as session:
+            industries = get_industries(session)
+            return ["all"] + list(industries)
 
     try:
         industries_list = load_industries()
@@ -51,16 +48,14 @@ if "selected_business_id" not in st.session_state:
 @st.cache_data(ttl=60)
 def load_businesses(search, industry):
     """Load businesses with filters"""
-    async def fetch():
-        async with get_async_session() as session:
-            return await get_businesses(
-                session,
-                limit=100,
-                offset=0,
-                search_query=search if search else None,
-                industry_filter=industry if industry != "all" else None
-            )
-    return asyncio.run(fetch())
+    with get_session() as session:
+        return get_businesses(
+            session,
+            limit=100,
+            offset=0,
+            search_query=search if search else None,
+            industry_filter=industry if industry != "all" else None
+        )
 
 # Main layout: table + detail panel
 table_col, detail_col = st.columns([7, 3])
@@ -120,21 +115,19 @@ with detail_col:
         @st.cache_data(ttl=60)
         def load_business_details(business_id):
             """Load business details with related data"""
-            async def fetch():
-                async with get_async_session() as session:
-                    business = await get_business_by_id(session, business_id)
-                    if not business:
-                        return None
+            with get_session() as session:
+                business = get_business_by_id(session, business_id)
+                if not business:
+                    return None
 
-                    user = await get_user_by_id(session, str(business.user_id))
-                    recent_calls = await get_calls_by_business(session, business_id, limit=5)
+                user = get_user_by_id(session, str(business.user_id))
+                recent_calls = get_calls_by_business(session, business_id, limit=5)
 
-                    return {
-                        "business": business,
-                        "user": user,
-                        "recent_calls": recent_calls
-                    }
-            return asyncio.run(fetch())
+                return {
+                    "business": business,
+                    "user": user,
+                    "recent_calls": recent_calls
+                }
 
         try:
             details = load_business_details(st.session_state.selected_business_id)

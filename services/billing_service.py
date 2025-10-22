@@ -3,7 +3,7 @@ Billing service for database operations.
 Provides read-only operations for subscriptions, invoices, and credits for Phase 2.
 """
 from sqlalchemy import select, func, desc
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from database.models import Subscription, Invoice, CreditBalance, CreditTransaction
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
@@ -13,8 +13,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-async def get_subscriptions(
-    session: AsyncSession,
+def get_subscriptions(
+    session: Session,
     limit: int = 50,
     offset: int = 0,
     status_filter: Optional[str] = None
@@ -44,7 +44,7 @@ async def get_subscriptions(
         # Apply pagination
         query = query.limit(limit).offset(offset)
 
-        result = await session.execute(query)
+        result = session.execute(query)
         subscriptions = result.scalars().all()
 
         return list(subscriptions)
@@ -54,8 +54,8 @@ async def get_subscriptions(
         raise
 
 
-async def get_subscription_by_user(
-    session: AsyncSession,
+def get_subscription_by_user(
+    session: Session,
     user_id: str
 ) -> Optional[Subscription]:
     """
@@ -70,7 +70,7 @@ async def get_subscription_by_user(
     """
     try:
         query = select(Subscription).where(Subscription.user_id == user_id)
-        result = await session.execute(query)
+        result = session.execute(query)
         return result.scalar_one_or_none()
 
     except Exception as e:
@@ -78,8 +78,8 @@ async def get_subscription_by_user(
         raise
 
 
-async def get_invoices(
-    session: AsyncSession,
+def get_invoices(
+    session: Session,
     limit: int = 50,
     offset: int = 0,
     status_filter: Optional[str] = None
@@ -109,7 +109,7 @@ async def get_invoices(
         # Apply pagination
         query = query.limit(limit).offset(offset)
 
-        result = await session.execute(query)
+        result = session.execute(query)
         invoices = result.scalars().all()
 
         return list(invoices)
@@ -119,8 +119,8 @@ async def get_invoices(
         raise
 
 
-async def get_invoices_by_user(
-    session: AsyncSession,
+def get_invoices_by_user(
+    session: Session,
     user_id: str,
     limit: int = 50
 ) -> List[Invoice]:
@@ -142,7 +142,7 @@ async def get_invoices_by_user(
             .order_by(desc(Invoice.created_at))
             .limit(limit)
         )
-        result = await session.execute(query)
+        result = session.execute(query)
         return list(result.scalars().all())
 
     except Exception as e:
@@ -150,8 +150,8 @@ async def get_invoices_by_user(
         raise
 
 
-async def get_billing_stats(
-    session: AsyncSession,
+def get_billing_stats(
+    session: Session,
     date_range: int = 30
 ) -> Dict[str, Any]:
     """
@@ -173,14 +173,14 @@ async def get_billing_stats(
         active_query = select(func.count(Subscription.id)).where(
             Subscription.status == "active"
         )
-        active_result = await session.execute(active_query)
+        active_result = session.execute(active_query)
         active_subs = active_result.scalar()
 
         # Trial subscriptions
         trial_query = select(func.count(Subscription.id)).where(
             Subscription.status == "trialing"
         )
-        trial_result = await session.execute(trial_query)
+        trial_result = session.execute(trial_query)
         trial_subs = trial_result.scalar()
 
         # Revenue from paid invoices in date range
@@ -189,7 +189,7 @@ async def get_billing_stats(
             Invoice.status == "paid",
             Invoice.created_at >= cutoff_date
         )
-        revenue_result = await session.execute(revenue_query)
+        revenue_result = session.execute(revenue_query)
         revenue_cents = revenue_result.scalar() or 0
         revenue_30d = Decimal(revenue_cents) / 100  # Convert cents to dollars
 
@@ -209,8 +209,8 @@ async def get_billing_stats(
         raise
 
 
-async def get_credit_balance(
-    session: AsyncSession,
+def get_credit_balance(
+    session: Session,
     user_id: str
 ) -> Optional[CreditBalance]:
     """
@@ -225,7 +225,7 @@ async def get_credit_balance(
     """
     try:
         query = select(CreditBalance).where(CreditBalance.user_id == user_id)
-        result = await session.execute(query)
+        result = session.execute(query)
         return result.scalar_one_or_none()
 
     except Exception as e:
@@ -233,8 +233,8 @@ async def get_credit_balance(
         raise
 
 
-async def get_credit_transactions(
-    session: AsyncSession,
+def get_credit_transactions(
+    session: Session,
     user_id: str,
     limit: int = 50
 ) -> List[CreditTransaction]:
@@ -256,7 +256,7 @@ async def get_credit_transactions(
             .order_by(desc(CreditTransaction.created_at))
             .limit(limit)
         )
-        result = await session.execute(query)
+        result = session.execute(query)
         return list(result.scalars().all())
 
     except Exception as e:
@@ -264,8 +264,8 @@ async def get_credit_transactions(
         raise
 
 
-async def get_low_balance_users(
-    session: AsyncSession,
+def get_low_balance_users(
+    session: Session,
     threshold: float = 5.0,
     limit: int = 50
 ) -> List[CreditBalance]:
@@ -287,7 +287,7 @@ async def get_low_balance_users(
             .order_by(CreditBalance.created_at)  # Oldest first
             .limit(limit)
         )
-        result = await session.execute(query)
+        result = session.execute(query)
         return list(result.scalars().all())
 
     except Exception as e:

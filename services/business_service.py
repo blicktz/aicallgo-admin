@@ -3,7 +3,7 @@ Business service for database operations.
 Provides read-only operations for Phase 2.
 """
 from sqlalchemy import select, func, or_, desc
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from database.models import Business
 from typing import Optional, List, Dict, Any
 import logging
@@ -11,8 +11,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-async def get_businesses(
-    session: AsyncSession,
+def get_businesses(
+    session: Session,
     limit: int = 50,
     offset: int = 0,
     search_query: Optional[str] = None,
@@ -49,7 +49,7 @@ async def get_businesses(
         # Apply pagination
         query = query.limit(limit).offset(offset)
 
-        result = await session.execute(query)
+        result = session.execute(query)
         businesses = result.scalars().all()
 
         return list(businesses)
@@ -59,7 +59,7 @@ async def get_businesses(
         raise
 
 
-async def get_business_by_id(session: AsyncSession, business_id: str) -> Optional[Business]:
+def get_business_by_id(session: Session, business_id: str) -> Optional[Business]:
     """
     Get business by ID with relationships loaded.
 
@@ -72,7 +72,7 @@ async def get_business_by_id(session: AsyncSession, business_id: str) -> Optiona
     """
     try:
         query = select(Business).where(Business.id == business_id)
-        result = await session.execute(query)
+        result = session.execute(query)
         return result.scalar_one_or_none()
 
     except Exception as e:
@@ -80,8 +80,8 @@ async def get_business_by_id(session: AsyncSession, business_id: str) -> Optiona
         raise
 
 
-async def get_businesses_by_user(
-    session: AsyncSession,
+def get_businesses_by_user(
+    session: Session,
     user_id: str,
     limit: int = 50
 ) -> List[Business]:
@@ -103,7 +103,7 @@ async def get_businesses_by_user(
             .order_by(desc(Business.created_at))
             .limit(limit)
         )
-        result = await session.execute(query)
+        result = session.execute(query)
         return list(result.scalars().all())
 
     except Exception as e:
@@ -111,7 +111,7 @@ async def get_businesses_by_user(
         raise
 
 
-async def get_business_stats(session: AsyncSession) -> Dict[str, Any]:
+def get_business_stats(session: Session) -> Dict[str, Any]:
     """
     Get business statistics for dashboard.
 
@@ -123,14 +123,14 @@ async def get_business_stats(session: AsyncSession) -> Dict[str, Any]:
     try:
         # Total businesses
         total_query = select(func.count(Business.id))
-        total_result = await session.execute(total_query)
+        total_result = session.execute(total_query)
         total_businesses = total_result.scalar()
 
         # Businesses with phone numbers
         with_phone_query = select(func.count(Business.id)).where(
             Business.primary_business_phone_number.isnot(None)
         )
-        with_phone_result = await session.execute(with_phone_query)
+        with_phone_result = session.execute(with_phone_query)
         businesses_with_phone = with_phone_result.scalar()
 
         return {
@@ -143,7 +143,7 @@ async def get_business_stats(session: AsyncSession) -> Dict[str, Any]:
         raise
 
 
-async def get_industries(session: AsyncSession) -> List[str]:
+def get_industries(session: Session) -> List[str]:
     """
     Get list of unique industries.
 
@@ -160,7 +160,7 @@ async def get_industries(session: AsyncSession) -> List[str]:
             .distinct()
             .order_by(Business.industry)
         )
-        result = await session.execute(query)
+        result = session.execute(query)
         industries = result.scalars().all()
         return list(industries)
 

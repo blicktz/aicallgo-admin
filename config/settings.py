@@ -27,6 +27,18 @@ class Settings(BaseSettings):
                 url = url.replace("sslmode=", "ssl=")
         return url
 
+    @property
+    def sync_database_url(self) -> str:
+        """
+        Convert DATABASE_URL to sync format for SQLAlchemy sync engine.
+        Uses psycopg2 driver (default for postgresql://)
+        """
+        url = str(self.DATABASE_URL)
+        # Remove async driver if present
+        if "+asyncpg" in url:
+            url = url.replace("+asyncpg", "")
+        return url
+
     # Admin Authentication
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD_HASH: str  # bcrypt hash
