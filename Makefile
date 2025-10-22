@@ -124,4 +124,7 @@ hash-password: ## Generate hash for a specific password (non-interactive)
 		echo "Example: make hash-password PASSWORD='MySecurePass123'"; \
 		exit 1; \
 	fi
-	@python3 -c "from passlib.context import CryptContext; print('\nAdd this to .env:\nADMIN_PASSWORD_HASH=' + CryptContext(schemes=['bcrypt']).hash('$(PASSWORD)'))"
+	@echo ""
+	@echo "Generating bcrypt hash..."
+	@echo ""
+	@python3 -c "import sys; from passlib.context import CryptContext; hash_val = CryptContext(schemes=['bcrypt']).hash('$(PASSWORD)'); escaped_hash = hash_val.replace('\$$', '\$$\$$'); print('Add this to .env (for docker-compose):\nADMIN_PASSWORD_HASH=' + escaped_hash); print('\nFor direct use (without docker-compose):\nADMIN_PASSWORD_HASH=' + hash_val)"
