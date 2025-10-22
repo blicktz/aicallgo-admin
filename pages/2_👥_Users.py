@@ -50,8 +50,8 @@ def load_users(search, plan, status, page_num, per_page):
             status_filter=status if status != "all" else None
         )
 
-# Main layout: table + detail panel
-table_col, detail_col = st.columns([7, 3])
+# Main layout: table + detail panel (30% list, 70% details)
+table_col, detail_col = st.columns([3, 7])
 
 with table_col:
     st.markdown("### User List")
@@ -68,7 +68,6 @@ with table_col:
                     "Email": u.email,
                     "Name": u.full_name or "N/A",
                     "Status": "Active" if u.is_active else "Inactive",
-                    "Created": format_datetime(u.created_at, format_str="%Y-%m-%d %H:%M"),
                     "ID": str(u.id)
                 }
                 for u in users
@@ -202,7 +201,6 @@ if st.button("📥 Export to CSV", use_container_width=True):
                 "Email": u.email,
                 "Name": u.full_name or "N/A",
                 "Status": "Active" if u.is_active else "Inactive",
-                "Created": format_datetime(u.created_at),
                 "ID": str(u.id)
             }
             for u in users

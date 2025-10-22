@@ -59,8 +59,8 @@ def load_agents(search, tone, page_num, per_page):
             tone_filter=tone if tone != "all" else None
         )
 
-# Main layout: table + detail panel
-table_col, detail_col = st.columns([7, 3])
+# Main layout: table + detail panel (30% list, 70% details)
+table_col, detail_col = st.columns([3, 7])
 
 with table_col:
     st.markdown("### Agent List")
@@ -77,12 +77,6 @@ with table_col:
                     "Agent Name": a.agent_name,
                     "Business": a.business.business_name if a.business else "N/A",
                     "Tone": a.tone.title() if a.tone else "N/A",
-                    "Features": format_features_list(
-                        a.enable_1800_blocking,
-                        a.enable_sales_detection,
-                        a.enable_call_transfer
-                    ),
-                    "Updated": format_datetime(a.updated_at, format_str="%Y-%m-%d %H:%M"),
                     "ID": str(a.id)
                 }
                 for a in agents

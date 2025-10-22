@@ -58,8 +58,8 @@ def load_businesses(search, industry):
             industry_filter=industry if industry != "all" else None
         )
 
-# Main layout: table + detail panel
-table_col, detail_col = st.columns([7, 3])
+# Main layout: table + detail panel (30% list, 70% details)
+table_col, detail_col = st.columns([3, 7])
 
 with table_col:
     st.markdown("### Business List")
@@ -76,7 +76,6 @@ with table_col:
                     "Business Name": b.business_name or "Unnamed",
                     "Industry": b.industry or "N/A",
                     "Phone": format_phone(b.primary_business_phone_number) if b.primary_business_phone_number else "N/A",
-                    "Created": format_datetime(b.created_at, format_str="%Y-%m-%d"),
                     "ID": str(b.id)
                 }
                 for b in businesses
@@ -235,7 +234,6 @@ if st.button("📥 Export to CSV", use_container_width=True):
                 "Phone": format_phone(b.primary_business_phone_number) if b.primary_business_phone_number else "N/A",
                 "Address": b.primary_address or "N/A",
                 "Website": b.website_url or "N/A",
-                "Created": format_datetime(b.created_at),
                 "ID": str(b.id)
             }
             for b in businesses
