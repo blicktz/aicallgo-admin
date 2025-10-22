@@ -34,8 +34,20 @@ clean: ## Clean up generated files
 env-copy: ## Copy .env.example to .env
 	cp .env.example .env
 
-# Shared Docker Setup (with webbackend)
-share-build: ## Build Docker image for shared setup
+# Production Docker Build (standalone)
+build: ## Build production Docker image (requires web-backend as sibling)
+	@echo "Building production Docker image..."
+	@echo "Prerequisites: web-backend repo must exist as sibling directory"
+	@if [ ! -d "../web-backend" ]; then \
+		echo "ERROR: web-backend not found at ../web-backend"; \
+		echo "Please clone web-backend as a sibling directory"; \
+		exit 1; \
+	fi
+	cd .. && docker build -f aicallgo-admin/Dockerfile -t aicallgo-admin:latest .
+	@echo "Build complete! Image: aicallgo-admin:latest"
+
+# Shared Docker Setup (with webbackend - for development)
+share-build: ## Build Docker image for shared setup (development)
 	docker-compose -f docker-compose.share.yml build
 
 share-up: ## Start Admin Board with shared webbackend services

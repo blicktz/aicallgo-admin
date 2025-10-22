@@ -43,9 +43,49 @@ admin-board/
 
 ## Setup Instructions
 
-### Option A: Docker Setup (Recommended for Development)
+### Option A: Production Docker Build (Standalone)
 
-This is the easiest way to run the admin board alongside the web-backend.
+Build a self-contained Docker image with web-backend models included.
+
+#### Prerequisites
+```bash
+# Clone both repositories as siblings
+cd parent-directory
+git clone https://github.com/blicktz/aicallgo-admin.git
+git clone https://github.com/your-org/web-backend.git
+
+# Directory structure:
+# parent-directory/
+# ├── aicallgo-admin/
+# └── web-backend/
+```
+
+#### Build and Run
+```bash
+cd aicallgo-admin
+
+# 1. Build production image (includes web-backend)
+make build
+
+# 2. Run container
+docker run -d \
+  -p 8005:8501 \
+  -e DATABASE_URL="postgresql://..." \
+  -e ADMIN_USERNAME="admin" \
+  -e ADMIN_PASSWORD_HASH="..." \
+  --name aicallgo-admin \
+  aicallgo-admin:latest
+
+# Access at http://localhost:8005
+```
+
+**Note:** The production Dockerfile copies the entire web-backend directory during build, creating a standalone image.
+
+---
+
+### Option B: Docker Compose (Development with Live Reload)
+
+Run with docker-compose using volume mounts for fast development.
 
 #### Prerequisites
 - Docker and Docker Compose installed
@@ -53,14 +93,13 @@ This is the easiest way to run the admin board alongside the web-backend.
 
 #### Quick Start
 ```bash
-cd /services/admin-board
+cd aicallgo-admin
 
 # 1. Copy environment file
 cp .env.example .env
 
 # 2. Generate password hash
 make generate-password
-# Or use: python3 setup_helper.py
 
 # 3. Edit .env and add the generated ADMIN_PASSWORD_HASH
 
@@ -86,7 +125,9 @@ make share-restart
 make share-down
 ```
 
-### Option B: Local Setup (Without Docker)
+---
+
+### Option C: Local Setup (Without Docker)
 
 #### 1. Install Dependencies
 
@@ -260,9 +301,27 @@ ls -la ../web-backend/app/models/
 
 ## Docker Architecture
 
-### Network Topology
+### Two Dockerfile Approach
 
-The admin board uses a shared Docker network architecture:
+The admin board provides two Dockerfiles for different use cases:
+
+**1. `Dockerfile` (Production - Standalone)**
+- **Build Context:** Parent directory (containing both aicallgo-admin and web-backend)
+- **Copies:** Entire web-backend directory into image
+- **Use Case:** Production deployment, CI/CD, standalone distribution
+- **Build Command:** `make build` or `cd .. && docker build -f aicallgo-admin/Dockerfile -t aicallgo-admin:latest .`
+- **Result:** Self-contained image (no external dependencies)
+
+**2. `Dockerfile.share` (Development - Volume Mounts)**
+- **Build Context:** Current directory (aicallgo-admin)
+- **Mounts:** web-backend via docker-compose volume
+- **Use Case:** Local development with live reload
+- **Build Command:** `make share-build` or `docker-compose -f docker-compose.share.yml build`
+- **Result:** Fast rebuilds, code changes reflected immediately
+
+### Network Topology (Development Mode)
+
+When using docker-compose.share.yml, the admin board joins a shared Docker network:
 
 ```
 aicallgo_network (Docker bridge)

@@ -5,7 +5,9 @@
 services:
   # Admin Board Streamlit Application
   admin_board:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.share
     container_name: aicallgo_admin_board
     ports:
       - "8005:8501"  # Host port 8005 → Container port 8501

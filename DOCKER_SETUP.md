@@ -2,14 +2,33 @@
 
 ## ✅ Files Created
 
-1. **Dockerfile** - Production-ready container image
-2. **.dockerignore** - Exclude unnecessary files from build
-3. **docker-compose.share.yml** - Local development with shared services
-4. **Makefile** - Convenient build and run commands
+1. **Dockerfile** - Production build (standalone, includes web-backend)
+2. **Dockerfile.share** - Development build (uses volume mounts)
+3. **.dockerignore** - Exclude unnecessary files from build
+4. **docker-compose.share.yml** - Local development with shared services
+5. **Makefile** - Convenient build and run commands
 
 ---
 
-## 🚀 Quick Start
+## 📦 Two Dockerfile Approach
+
+### Dockerfile (Production - Standalone)
+- **Purpose:** Self-contained production image
+- **Build Context:** Parent directory (requires web-backend as sibling)
+- **Includes:** Entire web-backend directory copied into image
+- **Use Case:** Production deployment, CI/CD, distribution
+- **Command:** `make build`
+
+### Dockerfile.share (Development - Live Reload)
+- **Purpose:** Fast development with live code changes
+- **Build Context:** Current directory
+- **Mounts:** web-backend via docker-compose volume
+- **Use Case:** Local development, debugging
+- **Command:** `make share-build`
+
+---
+
+## 🚀 Quick Start (Development Mode)
 
 ### Prerequisites
 
@@ -48,9 +67,14 @@ make share-up
 
 ## 📋 Available Commands
 
-### Build & Run
+### Build & Run (Production)
 ```bash
-make share-build     # Build Docker image
+make build           # Build standalone production image (requires ../web-backend)
+```
+
+### Build & Run (Development)
+```bash
+make share-build     # Build development Docker image
 make share-up        # Start admin board container
 make share-down      # Stop admin board container
 make share-restart   # Restart admin board
@@ -256,24 +280,55 @@ make share-down
 
 ## 📦 Production Deployment
 
-The `Dockerfile` is production-ready and can be used for:
-- Digital Ocean Kubernetes deployment (Phase 6)
-- Container registry push
-- Cloud deployment
+The `Dockerfile` creates a self-contained image with web-backend included.
 
-**Build for production:**
+### Prerequisites for Production Build
+
 ```bash
-docker build -t aicallgo-admin-board:latest .
+# Clone both repositories as siblings
+cd parent-directory
+git clone https://github.com/blicktz/aicallgo-admin.git
+git clone https://github.com/your-org/web-backend.git
+
+# Directory structure:
+# parent-directory/
+# ├── aicallgo-admin/
+# └── web-backend/
 ```
+
+### Build Production Image
+
+**Using Makefile (recommended):**
+```bash
+cd aicallgo-admin
+make build
+```
+
+**Manual build:**
+```bash
+cd parent-directory
+docker build -f aicallgo-admin/Dockerfile -t aicallgo-admin:latest .
+```
+
+### Run Production Container
 
 **Run standalone:**
 ```bash
-docker run -p 8005:8501 \
+docker run -d \
+  -p 8005:8501 \
   -e DATABASE_URL="postgresql://..." \
   -e ADMIN_USERNAME="admin" \
   -e ADMIN_PASSWORD_HASH="..." \
-  aicallgo-admin-board:latest
+  --name aicallgo-admin \
+  aicallgo-admin:latest
 ```
+
+### Use Cases
+
+- **Digital Ocean Kubernetes:** Deploy Phase 6
+- **Container Registry:** Push for distribution
+- **CI/CD:** Automated builds in GitHub Actions
+- **Cloud Deployment:** AWS, GCP, Azure
 
 ---
 

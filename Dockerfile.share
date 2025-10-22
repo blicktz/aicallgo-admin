@@ -18,16 +18,12 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy web-backend (entire directory from sibling repo)
-# Build context must be parent directory containing both repos
-COPY web-backend ./web-backend
-
-# Copy admin-board requirements and install Python dependencies
-COPY aicallgo-admin/requirements.txt ./requirements.txt
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy admin-board application code
-COPY aicallgo-admin/ ./
+# Copy application code
+COPY . .
 
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && \
