@@ -169,6 +169,33 @@ p {
     background-color: var(--gray-300) !important;
 }
 
+/* Primary form submit button - ensure white text */
+button[kind="primaryFormSubmit"],
+button[data-testid="stBaseButton-primaryFormSubmit"],
+.stFormSubmitButton button {
+    background-color: var(--purple-500) !important;
+    color: white !important;
+    border: none !important;
+}
+
+/* Target the text inside the button (it's in a <p> tag) */
+button[kind="primaryFormSubmit"] p,
+button[data-testid="stBaseButton-primaryFormSubmit"] p,
+.stFormSubmitButton button p {
+    color: white !important;
+}
+
+/* Hover state */
+button[kind="primaryFormSubmit"]:hover,
+.stFormSubmitButton button:hover {
+    background-color: var(--purple-600) !important;
+}
+
+button[kind="primaryFormSubmit"]:hover p,
+.stFormSubmitButton button:hover p {
+    color: white !important;
+}
+
 /* ==================== Cards & Containers ==================== */
 /* Expanders (collapsible sections) */
 .stExpander {

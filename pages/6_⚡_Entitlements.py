@@ -260,7 +260,7 @@ with manage_col:
 
                 all_features = load_all_features()
 
-                with st.form("override_form"):
+                with st.form("override_form", clear_on_submit=True):
                     # Feature selection
                     if not all_features:
                         st.warning("No features available in the system")
@@ -296,17 +296,6 @@ with manage_col:
                         placeholder="Explain why this override is needed...",
                         max_chars=500
                     )
-
-                    # Preview
-                    if notes and len(notes) >= 10:
-                        with st.expander("📋 Preview Changes"):
-                            st.markdown(f"**User**: {user.email}")
-                            st.markdown(f"**Feature**: {selected_feature_key}")
-                            st.markdown(f"**Action**: {has_access}")
-                            st.markdown(f"**New Access**: {'✅ Yes' if has_access == 'Grant' else '❌ No'}")
-                            if expires_at:
-                                st.markdown(f"**Expires**: {format_datetime(expires_at)}")
-                            st.markdown(f"**Notes**: {notes}")
 
                     # Confirmation checkbox
                     confirm_change = st.checkbox("⚠️ I confirm this override change")
