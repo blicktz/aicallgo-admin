@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
 
 # Set build arguments for web-backend repository
 ARG WEB_BACKEND_REPO=https://github.com/blicktz/aicallgo-backend-cursor.git
-ARG WEB_BACKEND_BRANCH=main
+ARG WEB_BACKEND_BRANCH=staging
 ARG USE_LOCAL_COPY=false
 
 # Clone web-backend repository using GitHub token from build secret
