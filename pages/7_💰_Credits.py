@@ -291,27 +291,6 @@ with manage_col:
                         max_chars=500
                     )
 
-                    # Preview
-                    if amount != 0 and reason and len(reason) >= 10:
-                        with st.expander("📋 Preview Adjustment"):
-                            try:
-                                with get_session() as session:
-                                    preview = calculate_adjustment_preview(
-                                        session, user.id, amount_decimal
-                                    )
-
-                                st.markdown(f"**Current Balance**: {format_minutes(preview['current_balance'])}")
-                                st.markdown(f"**Adjustment**: {format_minutes(preview['adjustment_amount'], signed=True)}")
-                                st.markdown(f"**New Balance**: {format_minutes(preview['new_balance'])}")
-
-                                # Warnings
-                                if abs(amount) > 1000:
-                                    st.warning(f"⚠️ Large adjustment: {abs(amount):.1f} min")
-                                if preview['new_balance'] < 0:
-                                    st.error("⚠️ This will result in negative balance (debt)")
-                            except Exception as e:
-                                st.error(f"Failed to calculate preview: {str(e)}")
-
                     submitted = st.form_submit_button("Apply Adjustment", type="primary")
 
                     if submitted:

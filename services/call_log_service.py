@@ -94,31 +94,92 @@ def get_call_log_by_id(session: Session, call_id: str) -> Optional[CallLog]:
 def get_calls_by_business(
     session: Session,
     business_id: str,
-    limit: int = 50
+    limit: int = 50,
+    offset: int = 0,
+    status_filter: Optional[str] = None,
+    date_from: Optional[datetime] = None,
+    date_to: Optional[datetime] = None
 ) -> List[CallLog]:
     """
-    Get call logs for a specific business.
+    Get call logs for a specific business with pagination and filters.
 
     Args:
         session: Database session
         business_id: Business UUID
         limit: Maximum number of results
+        offset: Pagination offset
+        status_filter: Filter by call status
+        date_from: Start date filter
+        date_to: End date filter
 
     Returns:
         List of CallLog objects for the business
     """
     try:
-        query = (
-            select(CallLog)
-            .where(CallLog.business_id == business_id)
-            .order_by(desc(CallLog.call_start_time))
-            .limit(limit)
-        )
+        query = select(CallLog).where(CallLog.business_id == business_id)
+
+        # Apply status filter
+        if status_filter and status_filter.lower() != "all":
+            query = query.where(CallLog.call_status == status_filter)
+
+        # Apply date range filters
+        if date_from:
+            query = query.where(CallLog.call_start_time >= date_from)
+        if date_to:
+            query = query.where(CallLog.call_start_time <= date_to)
+
+        # Order by call start time (newest first)
+        query = query.order_by(desc(CallLog.call_start_time))
+
+        # Apply pagination
+        query = query.limit(limit).offset(offset)
+
         result = session.execute(query)
         return list(result.scalars().all())
 
     except Exception as e:
         logger.error(f"Error fetching calls for business {business_id}: {e}")
+        raise
+
+
+def count_calls_by_business(
+    session: Session,
+    business_id: str,
+    status_filter: Optional[str] = None,
+    date_from: Optional[datetime] = None,
+    date_to: Optional[datetime] = None
+) -> int:
+    """
+    Count call logs for a specific business with filters.
+
+    Args:
+        session: Database session
+        business_id: Business UUID
+        status_filter: Filter by call status
+        date_from: Start date filter
+        date_to: End date filter
+
+    Returns:
+        Total count of CallLog records matching filters
+    """
+    try:
+        query = select(func.count(CallLog.id)).where(CallLog.business_id == business_id)
+
+        # Apply status filter
+        if status_filter and status_filter.lower() != "all":
+            query = query.where(CallLog.call_status == status_filter)
+
+        # Apply date range filters
+        if date_from:
+            query = query.where(CallLog.call_start_time >= date_from)
+        if date_to:
+            query = query.where(CallLog.call_start_time <= date_to)
+
+        result = session.execute(query)
+        return result.scalar() or 0
+
+    except Exception as e:
+        logger.error(f"Error counting calls for business {business_id}: {e}")
         raise
 
 
