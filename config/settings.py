@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     STREAMLIT_SERVER_PORT: int = 8501
     STREAMLIT_SERVER_ADDRESS: str = "0.0.0.0"
 
+    # Redis Configuration (for cache invalidation)
+    REDIS_URL: str = "redis://:aicallgo_redis_password@aicallgo_redis:6379/0"
+    ENTITLEMENT_CACHE_KEY_PREFIX: str = "entitlements"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

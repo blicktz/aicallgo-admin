@@ -15,6 +15,7 @@ from services.entitlement_service import (
 )
 from utils.formatters import format_datetime, format_status_badge
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +36,6 @@ with col2:
 # Initialize session state
 if "selected_user_id" not in st.session_state:
     st.session_state.selected_user_id = None
-if "confirm_override" not in st.session_state:
-    st.session_state.confirm_override = False
 if "confirm_delete" not in st.session_state:
     st.session_state.confirm_delete = None
 
@@ -208,21 +207,20 @@ with manage_col:
                                     else:
                                         try:
                                             with get_session() as session:
-                                                with session.begin():
-                                                    success = delete_feature_override(
-                                                        session=session,
-                                                        user_id=user.id,
-                                                        feature_key=feature_key,
-                                                        admin_username=st.secrets.get("ADMIN_USERNAME", "admin"),
-                                                        reason=delete_reason
-                                                    )
-                                                if success:
-                                                    st.success(f"✅ Override deleted: {feature_key}")
-                                                    st.session_state.confirm_delete = None
-                                                    st.cache_data.clear()
-                                                    st.rerun()
-                                                else:
-                                                    st.error("Failed to delete override")
+                                                success = delete_feature_override(
+                                                    session=session,
+                                                    user_id=user.id,
+                                                    feature_key=feature_key,
+                                                    admin_username=os.getenv("ADMIN_USERNAME", "admin"),
+                                                    reason=delete_reason
+                                                )
+                                            if success:
+                                                st.success(f"✅ Override deleted: {feature_key}")
+                                                st.session_state.confirm_delete = None
+                                                st.cache_data.clear()
+                                                st.rerun()
+                                            else:
+                                                st.error("Failed to delete override")
                                         except Exception as e:
                                             st.error(f"❌ Failed to delete override: {str(e)}")
                                             logger.exception("Failed to delete override")
@@ -310,6 +308,9 @@ with manage_col:
                                 st.markdown(f"**Expires**: {format_datetime(expires_at)}")
                             st.markdown(f"**Notes**: {notes}")
 
+                    # Confirmation checkbox
+                    confirm_change = st.checkbox("⚠️ I confirm this override change")
+
                     submitted = st.form_submit_button("Save Override", type="primary")
 
                     if submitted:
@@ -318,39 +319,31 @@ with manage_col:
                             st.error("Notes must be at least 10 characters")
                             st.stop()
 
-                        # Confirmation dialog
-                        if not st.session_state.confirm_override:
-                            st.warning("⚠️ Please confirm this change")
-                            if st.button("✅ Confirm Override"):
-                                st.session_state.confirm_override = True
-                                st.rerun()
+                        if not confirm_change:
+                            st.error("Please confirm the override change by checking the box above")
                             st.stop()
 
                         # Execute
                         try:
                             with get_session() as session:
-                                with session.begin():
-                                    override = create_feature_override(
-                                        session=session,
-                                        user_id=user.id,
-                                        feature_key=selected_feature_key,
-                                        has_access=(has_access == "Grant"),
-                                        expires_at=expires_at,
-                                        notes=notes,
-                                        admin_username=st.secrets.get("ADMIN_USERNAME", "admin")
-                                    )
+                                override = create_feature_override(
+                                    session=session,
+                                    user_id=user.id,
+                                    feature_key=selected_feature_key,
+                                    has_access=(has_access == "Grant"),
+                                    expires_at=expires_at,
+                                    notes=notes,
+                                    admin_username=os.getenv("ADMIN_USERNAME", "admin")
+                                )
 
                             st.success(f"✅ Override created: {selected_feature_key}")
-                            st.session_state.confirm_override = False
                             st.cache_data.clear()
                             st.rerun()
 
                         except ValueError as e:
                             st.error(f"❌ Validation error: {str(e)}")
-                            st.session_state.confirm_override = False
                         except Exception as e:
                             st.error(f"❌ Failed to create override: {str(e)}")
-                            st.session_state.confirm_override = False
                             logger.exception("Failed to create override")
 
         except Exception as e:

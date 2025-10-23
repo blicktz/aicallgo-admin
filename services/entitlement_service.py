@@ -8,9 +8,11 @@ import sys
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 import logging
+import redis
 
 # Add web-backend to path for CRUD imports
 backend_path = Path(__file__).parent.parent.parent / "web-backend"
@@ -23,8 +25,39 @@ from app.crud.crud_plan_feature_sync import plan_feature_sync
 from app.models import Feature, UserFeatureOverride, User, Subscription, Plan, PlanFeature
 
 from services.audit_service import format_audit_trail, log_entitlement_action
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _invalidate_entitlement_cache(user_id: UUID) -> None:
+    """
+    Invalidate entitlement cache for a user in Redis.
+
+    This ensures that when admin-board modifies entitlements,
+    the web-backend immediately reflects the changes.
+
+    Args:
+        user_id: User ID to invalidate cache for
+    """
+    try:
+        redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        cache_key = f"{settings.ENTITLEMENT_CACHE_KEY_PREFIX}:{str(user_id)}"
+        redis_client.delete(cache_key)
+        redis_client.close()
+
+        logger.info(
+            "Invalidated entitlement cache",
+            user_id=str(user_id),
+            cache_key=cache_key,
+        )
+    except Exception as e:
+        # Don't fail the operation if cache invalidation fails
+        logger.error(
+            "Failed to invalidate entitlement cache",
+            user_id=str(user_id),
+            error=str(e),
+        )
 
 
 def get_all_features(session: Session) -> List[Feature]:
@@ -215,6 +248,9 @@ def create_feature_override(
             notes=notes
         )
 
+        # Invalidate user's cache so changes are immediately visible
+        _invalidate_entitlement_cache(user_id=user_id)
+
         return override
 
     except Exception as e:
@@ -272,6 +308,9 @@ def delete_feature_override(
                 has_access=override.has_access if override else None,
                 notes=reason
             )
+
+            # Invalidate user's cache so changes are immediately visible
+            _invalidate_entitlement_cache(user_id=user_id)
 
         return success
 

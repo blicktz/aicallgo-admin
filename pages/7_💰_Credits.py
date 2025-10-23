@@ -17,6 +17,7 @@ from utils.formatters import format_datetime, format_currency
 import sys
 from pathlib import Path
 import logging
+import os
 
 # Add web-backend to path for CreditTransactionType
 backend_path = Path(__file__).parent.parent.parent / "web-backend"
@@ -350,15 +351,14 @@ with manage_col:
                         # Execute adjustment
                         try:
                             with get_session() as session:
-                                with session.begin():
-                                    transaction = adjust_credits(
-                                        session=session,
-                                        user_id=user.id,
-                                        amount=amount_decimal,
-                                        reason=reason,
-                                        admin_username=st.secrets.get("ADMIN_USERNAME", "admin"),
-                                        transaction_type=tx_type
-                                    )
+                                transaction = adjust_credits(
+                                    session=session,
+                                    user_id=user.id,
+                                    amount=amount_decimal,
+                                    reason=reason,
+                                    admin_username=os.getenv("ADMIN_USERNAME", "admin"),
+                                    transaction_type=tx_type
+                                )
 
                             st.success(f"✅ Credit adjustment successful: {format_minutes(amount_decimal, signed=True)}")
                             st.session_state.confirm_large_adjustment = False

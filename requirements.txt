@@ -7,6 +7,9 @@ extra-streamlit-components==0.1.71
 sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
 
+# Redis (for cache invalidation, matching web-backend)
+redis==5.0.1
+
 # Security (matching web-backend)
 passlib[bcrypt]==1.7.4
 bcrypt==4.1.2
