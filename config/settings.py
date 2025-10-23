@@ -17,13 +17,13 @@ class Settings(BaseSettings):
     # Database Logging
     SQL_ECHO: bool = False  # Enable SQL query logging (independent of DEBUG)
 
-    # Database Configuration (reuse from web-backend)
-    DATABASE_URL: PostgresDsn
+    # Database Configuration (sync format - will be converted to async internally when needed)
+    DATABASE_URL_SYNC: PostgresDsn
 
     @property
     def async_database_url(self) -> str:
-        """Convert DATABASE_URL to async format for SQLAlchemy async engine."""
-        url = str(self.DATABASE_URL)
+        """Convert DATABASE_URL_SYNC to async format for SQLAlchemy async engine."""
+        url = str(self.DATABASE_URL_SYNC)
         if url.startswith("postgresql://"):
             url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
             if "sslmode=" in url:
@@ -33,10 +33,10 @@ class Settings(BaseSettings):
     @property
     def sync_database_url(self) -> str:
         """
-        Convert DATABASE_URL to sync format for SQLAlchemy sync engine.
+        Convert DATABASE_URL_SYNC to sync format for SQLAlchemy sync engine.
         Uses psycopg2 driver (default for postgresql://)
         """
-        url = str(self.DATABASE_URL)
+        url = str(self.DATABASE_URL_SYNC)
         # Remove async driver if present
         if "+asyncpg" in url:
             url = url.replace("+asyncpg", "")

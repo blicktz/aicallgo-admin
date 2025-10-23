@@ -1,0 +1,201 @@
+name: Deploy Admin Board
+
+on:
+  push:
+    branches: [staging, main]
+  repository_dispatch:
+    types: [infrastructure-updated]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        type: choice
+        options: [staging, production]
+        default: staging
+
+jobs:
+  deploy:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || github.event.client_payload.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.11.4
+
+      - name: Set up environment variables
+        id: setup
+        run: |
+          # Determine workspace based on environment
+          ENV_NAME="${{ github.event.inputs.environment || github.event.client_payload.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}"
+
+          if [[ "$ENV_NAME" == "production" || "$ENV_NAME" == "prod" ]]; then
+            echo "workspace=prod" >> $GITHUB_OUTPUT
+            echo "backend_config=backend.hcl" >> $GITHUB_OUTPUT
+          else
+            echo "workspace=staging" >> $GITHUB_OUTPUT
+            echo "backend_config=backend.hcl" >> $GITHUB_OUTPUT
+          fi
+
+          # Use commit SHA with timestamp for unique image tag
+          IMAGE_TAG="${{ github.sha }}-$(date +%Y%m%d-%H%M%S)"
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Get infrastructure configuration
+        id: infra
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_KEY }}
+          DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+        run: |
+          echo "🔍 Fetching infrastructure configuration from Terraform state..."
+
+          # Clone infrastructure repo
+          git clone https://x-access-token:${{ secrets.INFRA_REPO_TOKEN }}@github.com/${{ github.repository_owner }}/aicallgo-infra-repo.git /tmp/infra
+          cd /tmp/infra/terraform
+
+          # Initialize Terraform with remote backend
+          terraform init -backend-config=${{ steps.setup.outputs.backend_config }} -backend-config="key=terraform.tfstate"
+          terraform workspace select ${{ steps.setup.outputs.workspace }}
+
+          # Extract outputs
+          REGISTRY_URL=$(terraform output -raw registry_endpoint)
+          NAMESPACE=$(terraform output -raw kubernetes_namespace)
+          DOMAIN=$(terraform output -raw domain_name)
+          CLUSTER_ID=$(terraform output -raw cluster_id)
+
+          echo "registry_url=$REGISTRY_URL" >> $GITHUB_OUTPUT
+          echo "namespace=$NAMESPACE" >> $GITHUB_OUTPUT
+          echo "domain=$DOMAIN" >> $GITHUB_OUTPUT
+          echo "cluster_id=$CLUSTER_ID" >> $GITHUB_OUTPUT
+
+          echo "✅ Retrieved configuration for ${{ steps.setup.outputs.workspace }} environment"
+          echo "   Registry: $REGISTRY_URL"
+          echo "   Namespace: $NAMESPACE"
+          echo "   Domain: $DOMAIN"
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Log in to DigitalOcean Container Registry
+        run: |
+          doctl registry login --expiry-seconds 1200
+
+      - name: Configure kubectl with fresh credentials
+        run: |
+          echo "🔐 Getting fresh kubeconfig for cluster..."
+          doctl kubernetes cluster kubeconfig save ${{ steps.infra.outputs.cluster_id }} --expiry-seconds 600
+          echo "✅ kubectl configured with fresh credentials (10-minute expiry)"
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -f ./Dockerfile \
+            --secret id=github_token,env=GITHUB_TOKEN \
+            --build-arg WEB_BACKEND_REPO=https://github.com/blicktz/aicallgo-backend-cursor.git \
+            --build-arg WEB_BACKEND_BRANCH=main \
+            -t ${{ steps.infra.outputs.registry_url }}/aicallgo-${{ steps.setup.outputs.workspace }}/admin-board:${{ steps.setup.outputs.image_tag }} \
+            -t ${{ steps.infra.outputs.registry_url }}/aicallgo-${{ steps.setup.outputs.workspace }}/admin-board:latest \
+            .
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCKER_BUILDKIT: 1
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ steps.infra.outputs.registry_url }}/aicallgo-${{ steps.setup.outputs.workspace }}/admin-board:${{ steps.setup.outputs.image_tag }}
+          docker push ${{ steps.infra.outputs.registry_url }}/aicallgo-${{ steps.setup.outputs.workspace }}/admin-board:latest
+
+      - name: Deploy to Kubernetes
+        run: |
+          echo "🚀 Deploying admin-board to ${{ steps.infra.outputs.namespace }}"
+
+          # Update deployment with new image
+          kubectl set image deployment/admin-board \
+            admin-board=${{ steps.infra.outputs.registry_url }}/aicallgo-${{ steps.setup.outputs.workspace }}/admin-board:${{ steps.setup.outputs.image_tag }} \
+            -n ${{ steps.infra.outputs.namespace }}
+
+          # Wait for rollout to complete
+          echo "⏳ Waiting for admin-board rollout..."
+          kubectl rollout status deployment/admin-board \
+            -n ${{ steps.infra.outputs.namespace }} \
+            --timeout=300s
+
+      - name: Verify deployment health
+        run: |
+          echo "🏥 Checking deployment health..."
+
+          # Get pod status
+          echo "📊 Admin Board pods:"
+          kubectl get pods -n ${{ steps.infra.outputs.namespace }} \
+            -l app=admin-board \
+            -o wide
+
+          # Check health
+          echo "🔍 Checking health..."
+          HEALTHY=false
+          for i in {1..30}; do
+            POD_NAME=$(kubectl get pods -n ${{ steps.infra.outputs.namespace }} \
+              -l app=admin-board \
+              -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+
+            if [[ -n "$POD_NAME" ]]; then
+              POD_STATUS=$(kubectl get pod $POD_NAME -n ${{ steps.infra.outputs.namespace }} \
+                -o jsonpath='{.status.phase}')
+
+              if [[ "$POD_STATUS" == "Running" ]]; then
+                echo "✅ Pod $POD_NAME is running"
+
+                # Check if health endpoint is accessible
+                if kubectl exec $POD_NAME -n ${{ steps.infra.outputs.namespace }} -- \
+                   curl -s -f http://localhost:8501/_stcore/health > /dev/null 2>&1; then
+                  echo "✅ Health check passed"
+                  HEALTHY=true
+                  break
+                else
+                  echo "⚠️  Health check pending..."
+                fi
+              fi
+            fi
+
+            echo "Waiting for deployment to be ready... ($i/30)"
+            sleep 10
+          done
+
+          # Final health check
+          if [[ "$HEALTHY" == "true" ]]; then
+            echo "✅ Deployment is healthy"
+            exit 0
+          else
+            echo "❌ Deployment health check failed"
+            echo "📋 Pod logs:"
+            kubectl logs -n ${{ steps.infra.outputs.namespace }} \
+              -l app=admin-board \
+              --tail=50
+            exit 1
+          fi
+
+      - name: Report deployment status
+        if: always()
+        run: |
+          if [[ "${{ job.status }}" == "success" ]]; then
+            echo "🎉 Successfully deployed admin-board to ${{ steps.setup.outputs.workspace }}"
+            echo "📦 Image: ${{ steps.infra.outputs.registry_url }}/aicallgo-${{ steps.setup.outputs.workspace }}/admin-board:${{ steps.setup.outputs.image_tag }}"
+
+            # Determine admin URL based on environment and domain
+            if [[ "${{ steps.setup.outputs.workspace }}" == "staging" ]]; then
+              ADMIN_URL="https://staging-admin.julya.ai"
+            else
+              ADMIN_URL="https://admin.${{ steps.infra.outputs.domain }}"
+            fi
+            echo "🌐 Admin URL: $ADMIN_URL"
+          else
+            echo "❌ Deployment failed for admin-board"
+          fi

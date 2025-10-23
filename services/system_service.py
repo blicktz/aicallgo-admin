@@ -292,7 +292,7 @@ def get_system_info() -> Dict[str, Any]:
             "platform": platform.system(),
             "platform_version": platform.release(),
             "streamlit_version": st.__version__,
-            "database_url": str(settings.DATABASE_URL).split("@")[-1] if settings.DATABASE_URL else "N/A",  # Hide credentials
+            "database_url": str(settings.DATABASE_URL_SYNC).split("@")[-1] if settings.DATABASE_URL_SYNC else "N/A",  # Hide credentials
             "environment": getattr(settings, "APP_ENV", "unknown"),
             "current_time": datetime.utcnow().isoformat()
         }
