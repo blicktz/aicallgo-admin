@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://:aicallgo_redis_password@aicallgo_redis:6379/0"
     ENTITLEMENT_CACHE_KEY_PREFIX: str = "entitlements"
 
+    # Backblaze B2 Configuration (for call recordings)
+    B2_APPLICATION_KEY_ID: str
+    B2_APPLICATION_KEY: str
+    B2_BUCKET_NAME: str = "aicallgo"
+    B2_REGION: str = "us-west-004"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

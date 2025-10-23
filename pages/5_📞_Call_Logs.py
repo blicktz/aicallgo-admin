@@ -2,13 +2,15 @@
 Call Logs - Browse call records filtered by business
 """
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 from datetime import datetime, timedelta
 from config.auth import require_auth
 from database.connection import get_session
 from services.call_log_service import get_calls_by_business, count_calls_by_business
 from services.business_service import get_businesses
-from utils.formatters import format_datetime, format_phone, format_duration, format_status_badge
+from services.recording_service import get_recording_service
+from utils.formatters import format_datetime, format_phone, format_duration, format_status_badge, parse_transcript_json
 
 # Auth check
 if not require_auth():
@@ -255,17 +257,205 @@ with calls_col:
                             with st.expander("🤖 AI Summary", expanded=True):
                                 st.info(selected_call.ai_summary)
 
-                        # Full Transcript (expandable)
+                        # Call Recording Player (expandable)
+                        if selected_call.twilio_call_sid:
+                            with st.expander("🎙️ Call Recording", expanded=True):
+                                try:
+                                    # Get recording service
+                                    recording_service = get_recording_service()
+
+                                    # Get recording playback info with presigned URL
+                                    with get_session() as db_session:
+                                        recording_info = recording_service.get_recording_playback_info(
+                                            session=db_session,
+                                            call_sid=selected_call.twilio_call_sid
+                                        )
+
+                                    if recording_info:
+                                        # Show recording metadata
+                                        meta_col1, meta_col2 = st.columns([3, 1])
+                                        with meta_col1:
+                                            if recording_info.get("duration_seconds"):
+                                                st.markdown(
+                                                    f"**Duration:** {format_duration(recording_info['duration_seconds'])}"
+                                                )
+                                        with meta_col2:
+                                            st.markdown(
+                                                f"**Format:** {recording_info['content_type'].split('/')[-1].upper()}"
+                                            )
+
+                                        # Streamlit native audio player
+                                        st.audio(recording_info["url"])
+
+                                        # Expiration notice
+                                        try:
+                                            expires_at = datetime.fromisoformat(
+                                                recording_info["expires_at"].replace('Z', '+00:00')
+                                            )
+                                            st.caption(
+                                                f"⏱️ Playback URL expires at {expires_at.strftime('%I:%M %p UTC')}"
+                                            )
+                                        except Exception:
+                                            pass
+                                    else:
+                                        st.info("📭 No recording available for this call")
+
+                                except ValueError as e:
+                                    # Configuration errors (missing B2 credentials, etc.)
+                                    st.warning(f"⚠️ Recording playback not configured: {str(e)}")
+                                except Exception as e:
+                                    # Other errors (B2 access issues, etc.)
+                                    st.error(f"❌ Failed to load recording: {str(e)}")
+
+                        # Full Transcript (expandable) - Chat Style
                         if selected_call.full_transcript:
                             with st.expander("📝 Full Transcript", expanded=False):
-                                st.text_area(
-                                    "Transcript",
-                                    selected_call.full_transcript,
-                                    height=300,
-                                    disabled=True,
-                                    key=f"transcript_{selected_call.id}",
-                                    label_visibility="collapsed"
-                                )
+                                # Parse transcript JSON
+                                transcript_data = parse_transcript_json(selected_call.full_transcript)
+
+                                if transcript_data["messages"]:
+                                    # Inline CSS for chat bubbles
+                                    css_styles = """
+                                    .chat-container {
+                                        max-width: 100%;
+                                        padding: 0.5rem 0;
+                                        background-color: #ffffff;
+                                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                                    }
+                                    .chat-message {
+                                        display: flex;
+                                        margin-bottom: 1rem;
+                                        gap: 0.75rem;
+                                        align-items: flex-start;
+                                    }
+                                    .chat-message.agent {
+                                        flex-direction: row-reverse;
+                                        justify-content: flex-start;
+                                    }
+                                    .chat-message.caller {
+                                        flex-direction: row;
+                                        justify-content: flex-start;
+                                    }
+                                    .chat-avatar {
+                                        flex-shrink: 0;
+                                        width: 36px;
+                                        height: 36px;
+                                        border-radius: 50%;
+                                        display: flex;
+                                        align-items: center;
+                                        justify-content: center;
+                                        font-weight: 600;
+                                        font-size: 0.875rem;
+                                        color: #ffffff;
+                                    }
+                                    .chat-avatar.agent {
+                                        background-color: #456535;
+                                    }
+                                    .chat-avatar.caller {
+                                        background-color: #4b5563;
+                                    }
+                                    .chat-bubble-wrapper {
+                                        display: flex;
+                                        flex-direction: column;
+                                        max-width: 70%;
+                                    }
+                                    .chat-bubble {
+                                        padding: 0.75rem 1rem;
+                                        border-radius: 1rem;
+                                        line-height: 1.5;
+                                        font-size: 1rem;
+                                        word-wrap: break-word;
+                                    }
+                                    .chat-message.agent .chat-bubble {
+                                        background-color: #e5e7eb;
+                                        color: #111827;
+                                        border-bottom-right-radius: 0.25rem;
+                                    }
+                                    .chat-message.caller .chat-bubble {
+                                        background-color: #456535;
+                                        color: #ffffff;
+                                        border-bottom-left-radius: 0.25rem;
+                                    }
+                                    .chat-timestamp {
+                                        font-size: 0.75rem;
+                                        color: #6b7280;
+                                        margin-top: 0.25rem;
+                                        padding: 0 0.5rem;
+                                    }
+                                    .chat-message.agent .chat-timestamp {
+                                        text-align: right;
+                                    }
+                                    .chat-message.caller .chat-timestamp {
+                                        text-align: left;
+                                    }
+                                    """
+
+                                    # Build chat HTML
+                                    chat_html = '<div class="chat-container">'
+
+                                    for msg in transcript_data["messages"]:
+                                        role = msg.get("role", "caller")
+                                        content = msg.get("content", "").replace('<', '&lt;').replace('>', '&gt;')
+                                        timestamp = msg.get("timestamp")
+
+                                        # Get initial for avatar
+                                        avatar_letter = "J" if role == "agent" else "P"
+
+                                        # Format timestamp if available
+                                        time_display = ""
+                                        if timestamp:
+                                            try:
+                                                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                                                time_display = dt.strftime("%I:%M %p")
+                                            except:
+                                                time_display = ""
+
+                                        # Build chat message HTML
+                                        chat_html += f'''
+                                        <div class="chat-message {role}">
+                                            <div class="chat-avatar {role}">{avatar_letter}</div>
+                                            <div class="chat-bubble-wrapper">
+                                                <div class="chat-bubble">{content}</div>
+                                                {f'<div class="chat-timestamp">{time_display}</div>' if time_display else ''}
+                                            </div>
+                                        </div>
+                                        '''
+
+                                    chat_html += '</div>'
+
+                                    # Build complete HTML with inline styles
+                                    full_html = f"""
+                                    <!DOCTYPE html>
+                                    <html>
+                                    <head>
+                                        <style>{css_styles}</style>
+                                    </head>
+                                    <body style="margin: 0; padding: 0;">
+                                        {chat_html}
+                                    </body>
+                                    </html>
+                                    """
+
+                                    # Calculate dynamic height based on message count
+                                    message_count = len(transcript_data["messages"])
+                                    height = min(600, max(300, message_count * 80))
+
+                                    # Render with components.html for proper rendering
+                                    components.html(full_html, height=height, scrolling=True)
+
+                                    # Show metadata if JSON was parsed successfully
+                                    if transcript_data["is_json"] and transcript_data["metadata"]:
+                                        metadata = transcript_data["metadata"]
+                                        st.caption(f"Total messages: {metadata.get('total_messages', len(transcript_data['messages']))}")
+                                else:
+                                    # Fallback: show plain text
+                                    st.text_area(
+                                        "Transcript",
+                                        selected_call.full_transcript,
+                                        height=200,
+                                        disabled=True,
+                                        label_visibility="collapsed"
+                                    )
                         else:
                             st.caption("No transcript available")
 
