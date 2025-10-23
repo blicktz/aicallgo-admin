@@ -2,12 +2,13 @@
 Billing service for database operations.
 Provides read-only operations for subscriptions, invoices, and credits for Phase 2.
 """
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, cast, Date
 from sqlalchemy.orm import Session
 from database.models import Subscription, Invoice, CreditBalance, CreditTransaction
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 from decimal import Decimal
+import pandas as pd
 import logging
 
 logger = logging.getLogger(__name__)
@@ -292,4 +293,65 @@ def get_low_balance_users(
 
     except Exception as e:
         logger.error(f"Error fetching low balance users: {e}")
+        raise
+
+
+def get_revenue_trend_data(session: Session, days: int = 30) -> pd.DataFrame:
+    """
+    Get revenue trend data for the specified number of days.
+
+    Args:
+        session: Database session
+        days: Number of days to look back (default: 30)
+
+    Returns:
+        DataFrame with columns:
+        - date: Date of the revenue
+        - revenue: Revenue amount in dollars for that date
+    """
+    try:
+        cutoff_date = datetime.utcnow() - timedelta(days=days)
+
+        # Query to get revenue grouped by date (from paid invoices)
+        query = (
+            select(
+                cast(Invoice.paid_at, Date).label("date"),
+                func.sum(Invoice.amount_paid).label("revenue_cents")
+            )
+            .where(
+                Invoice.status == "paid",
+                Invoice.paid_at >= cutoff_date,
+                Invoice.paid_at.isnot(None)
+            )
+            .group_by(cast(Invoice.paid_at, Date))
+            .order_by(cast(Invoice.paid_at, Date))
+        )
+
+        result = session.execute(query)
+        rows = result.all()
+
+        # Convert to DataFrame
+        if rows:
+            df = pd.DataFrame(rows, columns=["date", "revenue_cents"])
+            df["date"] = pd.to_datetime(df["date"])
+            # Convert cents to dollars
+            df["revenue"] = (df["revenue_cents"] / 100).astype(float)
+            df = df.drop(columns=["revenue_cents"])
+        else:
+            df = pd.DataFrame(columns=["date", "revenue"])
+
+        # Fill missing dates with 0 revenue
+        date_range = pd.date_range(
+            start=cutoff_date.date(),
+            end=datetime.utcnow().date(),
+            freq="D"
+        )
+        complete_df = pd.DataFrame({"date": date_range})
+        complete_df = complete_df.merge(df, on="date", how="left")
+        complete_df["revenue"] = complete_df["revenue"].fillna(0).astype(float)
+
+        return complete_df
+
+    except Exception as e:
+        logger.error(f"Error fetching revenue trend data: {e}")
         raise
