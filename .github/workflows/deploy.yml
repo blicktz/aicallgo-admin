@@ -100,7 +100,7 @@ jobs:
             -f ./Dockerfile \
             --secret id=github_token,env=GITHUB_TOKEN \
             --build-arg WEB_BACKEND_REPO=https://github.com/blicktz/aicallgo-backend-cursor.git \
-            --build-arg WEB_BACKEND_BRANCH=main \
+            --build-arg WEB_BACKEND_BRANCH=staging \
             -t ${{ steps.infra.outputs.registry_url }}/aicallgo-${{ steps.setup.outputs.workspace }}/admin-board:${{ steps.setup.outputs.image_tag }} \
             -t ${{ steps.infra.outputs.registry_url }}/aicallgo-${{ steps.setup.outputs.workspace }}/admin-board:latest \
             .
