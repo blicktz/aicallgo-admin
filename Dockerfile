@@ -55,10 +55,9 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy web-backend models from deps stage
-# Only copy what's needed: app/models/ and app/db/base_class.py
-COPY --from=deps-stage /tmp/web-backend/app/models ./web-backend/app/models
-COPY --from=deps-stage /tmp/web-backend/app/db ./web-backend/app/db
+# Copy entire web-backend app directory from deps stage
+# This ensures we have all models, crud operations, schemas, and other dependencies
+COPY --from=deps-stage /tmp/web-backend/app ./web-backend/app
 
 # Copy admin-board requirements and install Python dependencies
 COPY requirements.txt .
