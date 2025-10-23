@@ -3,7 +3,7 @@ Business service for database operations.
 Provides read-only operations for Phase 2.
 """
 from sqlalchemy import select, func, or_, desc
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from database.models import Business
 from typing import Optional, List, Dict, Any
 import logging
@@ -78,7 +78,11 @@ def get_business_by_id(session: Session, business_id: str) -> Optional[Business]
         Business object or None if not found
     """
     try:
-        query = select(Business).where(Business.id == business_id)
+        query = (
+            select(Business)
+            .where(Business.id == business_id)
+            .options(joinedload(Business.twilio_phone_number))
+        )
         result = session.execute(query)
         return result.scalar_one_or_none()
 

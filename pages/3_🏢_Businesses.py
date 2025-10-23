@@ -10,8 +10,7 @@ from database.connection import get_session
 from services.business_service import get_businesses, get_business_by_id, get_industries
 from services.user_service import get_user_by_id
 from services.call_log_service import get_calls_by_business
-from services.agent_service import get_agent_by_business_id
-from utils.formatters import format_datetime, format_phone, format_tone_badge
+from utils.formatters import format_datetime, format_phone, format_status_badge
 
 # Auth check
 if not require_auth():
@@ -124,13 +123,11 @@ with detail_col:
 
                 user = get_user_by_id(session, str(business.user_id))
                 recent_calls = get_calls_by_business(session, business_id, limit=5)
-                agent = get_agent_by_business_id(session, business_id)
 
                 return {
                     "business": business,
                     "user": user,
-                    "recent_calls": recent_calls,
-                    "agent": agent
+                    "recent_calls": recent_calls
                 }
 
         try:
@@ -144,6 +141,7 @@ with detail_col:
                 # Business info card
                 st.markdown("#### Basic Info")
                 st.markdown(f"**Name:** {business.business_name or 'Unnamed'}")
+                st.markdown(f"**Business ID:** {business.id}")
                 st.markdown(f"**Industry:** {business.industry or 'N/A'}")
                 if business.primary_business_phone_number:
                     st.markdown(f"**Phone:** {format_phone(business.primary_business_phone_number)}")
@@ -167,32 +165,16 @@ with detail_col:
 
                 st.divider()
 
-                # AI Agent info
-                st.markdown("#### AI Agent")
-                if details["agent"]:
-                    agent = details["agent"]
-                    st.markdown(f"**Agent Name:** {agent.agent_name}")
-                    st.markdown(f"**Tone:** {format_tone_badge(agent.tone)}")
-                    st.markdown(f"**Max Duration:** {agent.max_call_duration_minutes} min")
-
-                    # Show enabled features
-                    features = []
-                    if agent.enable_1800_blocking:
-                        features.append("1-800 Blocking")
-                    if agent.enable_sales_detection:
-                        features.append("Sales Detection")
-                    if agent.enable_call_transfer:
-                        features.append("Call Transfer")
-
-                    if features:
-                        st.markdown(f"**Features:** {', '.join(features)}")
-
-                    # Show counts
-                    faq_count = len(agent.faq_list) if agent.faq_list else 0
-                    questions_count = len(agent.custom_questions) if agent.custom_questions else 0
-                    st.markdown(f"**FAQs:** {faq_count} | **Custom Questions:** {questions_count}")
+                # Twilio Phone Number info
+                st.markdown("#### Twilio Phone Number")
+                if business.twilio_phone_number:
+                    phone_number = business.twilio_phone_number
+                    st.markdown(f"**Phone Number:** {format_phone(phone_number.phone_number)}")
+                    st.markdown(f"**Status:** {format_status_badge(phone_number.status)}")
+                    if phone_number.assigned_at:
+                        st.markdown(f"**Assigned Date:** {format_datetime(phone_number.assigned_at)}")
                 else:
-                    st.caption("No AI agent configured")
+                    st.caption("Not Assigned")
 
                 st.divider()
 
