@@ -123,6 +123,94 @@ def get_appointment_by_id(session: Session, appointment_id: str) -> Optional[App
         raise
 
 
+def get_appointments_by_business(
+    session: Session,
+    business_id: str,
+    limit: int = 50,
+    offset: int = 0,
+    date_from: Optional[datetime] = None,
+    date_to: Optional[datetime] = None
+) -> List[Appointment]:
+    """
+    Get appointments for a specific business with pagination and filters.
+
+    Args:
+        session: Database session
+        business_id: Business UUID
+        limit: Maximum number of results
+        offset: Pagination offset
+        date_from: Start date filter
+        date_to: End date filter
+
+    Returns:
+        List of Appointment objects for the business
+    """
+    try:
+        query = select(Appointment).where(Appointment.business_id == business_id)
+
+        # Eager load relationships
+        query = query.options(
+            joinedload(Appointment.user),
+            joinedload(Appointment.business),
+            joinedload(Appointment.end_user),
+            joinedload(Appointment.call_log)
+        )
+
+        # Apply date range filters
+        if date_from:
+            query = query.where(Appointment.start_time >= date_from)
+        if date_to:
+            query = query.where(Appointment.start_time <= date_to)
+
+        # Order by start time (newest first)
+        query = query.order_by(desc(Appointment.start_time))
+
+        # Apply pagination
+        query = query.limit(limit).offset(offset)
+
+        result = session.execute(query)
+        return list(result.unique().scalars().all())
+
+    except Exception as e:
+        logger.error(f"Error fetching appointments for business {business_id}: {e}")
+        raise
+
+
+def count_appointments_by_business(
+    session: Session,
+    business_id: str,
+    date_from: Optional[datetime] = None,
+    date_to: Optional[datetime] = None
+) -> int:
+    """
+    Count appointments for a specific business with filters.
+
+    Args:
+        session: Database session
+        business_id: Business UUID
+        date_from: Start date filter
+        date_to: End date filter
+
+    Returns:
+        Total count of Appointment records matching filters
+    """
+    try:
+        query = select(func.count(Appointment.id)).where(Appointment.business_id == business_id)
+
+        # Apply date range filters
+        if date_from:
+            query = query.where(Appointment.start_time >= date_from)
+        if date_to:
+            query = query.where(Appointment.start_time <= date_to)
+
+        result = session.execute(query)
+        return result.scalar() or 0
+
+    except Exception as e:
+        logger.error(f"Error counting appointments for business {business_id}: {e}")
+        raise
+
+
 def get_appointment_stats(
     session: Session,
     start_date: Optional[datetime] = None,
