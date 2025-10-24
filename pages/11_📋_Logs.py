@@ -146,15 +146,65 @@ with logs_col:
         replicas = selected_deployment["replicas"]
         pods = selected_deployment["pods"]
 
-        st.markdown(f"### Logs: `{selected_service}`")
-        st.caption(f"Replicas: {ready}/{replicas} ready | Pods: {len(pods)}")
+        # Header with inline refresh button
+        header_col1, header_col2 = st.columns([6, 1])
 
-        # Fetch logs if not in session state
+        with header_col1:
+            st.markdown(f"### Logs: `{selected_service}`")
+            st.caption(f"Replicas: {ready}/{replicas} ready | Pods: {len(pods)}")
+
+        with header_col2:
+            # Refresh button - appends new logs instead of clearing
+            if st.button("🔄 Refresh Logs", key="refresh_logs_btn", use_container_width=True, type="secondary"):
+                # Mark for refresh but keep existing logs
+                st.session_state.refresh_requested = True
+                st.rerun()
+
+        # Fetch or append logs
         if "current_logs" not in st.session_state:
+            # First load - fetch initial logs
             with st.spinner(f"Loading logs for {selected_service}..."):
                 logs_by_pod = get_deployment_logs(selected_service, tail_lines=tail_lines)
                 st.session_state.current_logs = logs_by_pod
+                st.session_state.current_service = selected_service
+        elif st.session_state.get("refresh_requested", False):
+            # Refresh requested - append new logs
+            with st.spinner(f"Fetching new logs..."):
+                new_logs_by_pod = get_deployment_logs(selected_service, tail_lines=tail_lines)
+
+                # Merge new logs with existing logs
+                existing_logs = st.session_state.current_logs
+                merged_logs = {}
+
+                for pod_name, new_log_content in new_logs_by_pod.items():
+                    if pod_name in existing_logs:
+                        # Append new logs, deduplicating by line content
+                        existing_lines = existing_logs[pod_name].split('\n')
+                        new_lines = new_log_content.split('\n')
+
+                        # Simple deduplication: only add lines not in existing logs
+                        existing_set = set(existing_lines)
+                        unique_new_lines = [line for line in new_lines if line not in existing_set and line.strip()]
+
+                        # Combine: existing + ANSI reset + unique new lines
+                        # Add ANSI reset code to ensure color state resets properly
+                        combined = existing_lines + ['\x1b[0m'] + unique_new_lines
+
+                        # Keep last 2000 lines to prevent memory issues
+                        if len(combined) > 2000:
+                            combined = combined[-2000:]
+
+                        merged_logs[pod_name] = '\n'.join(combined)
+                    else:
+                        # New pod, just add its logs
+                        merged_logs[pod_name] = new_log_content
+
+                st.session_state.current_logs = merged_logs
+                st.session_state.refresh_requested = False
+
+            logs_by_pod = st.session_state.current_logs
         else:
+            # Use cached logs
             logs_by_pod = st.session_state.current_logs
 
         # Display logs in a fixed-height container
