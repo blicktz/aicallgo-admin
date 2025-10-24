@@ -16,6 +16,10 @@ pip-delete-this-directory.txt
 .env.*
 !.env.example
 
+# Kubernetes config (contains cluster credentials)
+kubeconfig.txt
+*.kubeconfig
+
 # IDE
 .vscode/
 .idea/

@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     B2_BUCKET_NAME: str = "aicallgo"
     B2_REGION: str = "us-west-004"
 
+    # Kubernetes Configuration (for logs viewer)
+    KUBECONFIG_PATH: str = ""  # Empty string means use in-cluster config
+    K8S_NAMESPACE: str = "aicallgo-staging"
+    K8S_LOGS_ENABLED: bool = True
+
     class Config:
         env_file = ".env"
         case_sensitive = True
