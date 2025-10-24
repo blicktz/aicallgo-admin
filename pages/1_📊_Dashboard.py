@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 from config.auth import require_auth
 from database.connection import get_session
 from services.user_service import get_user_stats, get_recent_signups
-from services.billing_service import get_billing_stats
-from services.call_log_service import get_call_stats
+from services.billing_service import get_billing_stats, get_revenue_trend_data
+from services.call_log_service import get_call_stats, get_call_trend_data
 from services.agent_service import get_agent_stats
 from components.cards import metric_card, info_card
 from components.charts import line_chart, area_chart
@@ -39,6 +39,8 @@ def load_dashboard_data():
         call_stats = get_call_stats(session, date_range=30)
         agent_stats = get_agent_stats(session)
         recent_users = get_recent_signups(session, limit=5)
+        call_trend = get_call_trend_data(session, days=30)
+        revenue_trend = get_revenue_trend_data(session, days=30)
 
         return {
             "user_stats": user_stats,
@@ -46,6 +48,8 @@ def load_dashboard_data():
             "call_stats": call_stats,
             "agent_stats": agent_stats,
             "recent_users": recent_users,
+            "call_trend": call_trend,
+            "revenue_trend": revenue_trend,
         }
 
 with st.spinner("Loading dashboard..."):
@@ -98,25 +102,12 @@ st.markdown("### Trends")
 chart_col1, chart_col2 = st.columns(2)
 
 with chart_col1:
-    # Calls over time chart (mock data for now - will be implemented with real time series later)
-    st.info("📊 Call trend chart - Coming soon with time series data")
-    # TODO: Implement actual time series query in call_log_service
-    # For now, showing a placeholder
-    calls_df = pd.DataFrame({
-        "date": pd.date_range(start=datetime.now() - timedelta(days=29), periods=30, freq="D"),
-        "calls": [50 + i * 2 for i in range(30)]  # Mock data
-    })
-    line_chart(calls_df, "date", "calls", "Calls Over Time (30 days)", y_title="Number of Calls")
+    # Calls over time chart with real data
+    line_chart(data["call_trend"], "date", "calls", "Calls Over Time (30 days)", y_title="Number of Calls")
 
 with chart_col2:
-    # Revenue trend chart (mock data for now)
-    st.info("💰 Revenue trend chart - Coming soon with time series data")
-    # TODO: Implement actual revenue time series query
-    revenue_df = pd.DataFrame({
-        "date": pd.date_range(start=datetime.now() - timedelta(days=29), periods=30, freq="D"),
-        "revenue": [800 + i * 10 for i in range(30)]  # Mock data
-    })
-    area_chart(revenue_df, "date", ["revenue"], "Revenue Trend (30 days)", stacked=False)
+    # Revenue trend chart with real data
+    area_chart(data["revenue_trend"], "date", ["revenue"], "Revenue Trend (30 days)", stacked=False)
 
 st.divider()
 

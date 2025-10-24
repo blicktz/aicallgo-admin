@@ -341,3 +341,124 @@ def format_enabled_disabled(value: Optional[bool]) -> str:
     if value is None:
         return "❌ Disabled"
     return "✅ Enabled" if value else "❌ Disabled"
+
+
+def parse_transcript_json(transcript_str: Optional[str]) -> dict:
+    """
+    Parse JSON transcript into structured format for chat display.
+
+    Args:
+        transcript_str: JSON string with transcript data or plain text
+
+    Returns:
+        Dict with:
+            - messages: List of {role, content, timestamp} dicts
+            - metadata: Call metadata dict
+            - is_json: Boolean indicating if parsing succeeded
+
+    Examples:
+        >>> parse_transcript_json('{"messages": [...]}')
+        {
+            "messages": [
+                {"role": "agent", "content": "Hello!", "timestamp": "2025-01-20T10:30:05Z"},
+                {"role": "caller", "content": "Hi", "timestamp": "2025-01-20T10:30:12Z"}
+            ],
+            "metadata": {"call_sid": "CA123", "total_messages": 2},
+            "is_json": True
+        }
+    """
+    import json
+
+    if not transcript_str:
+        return {
+            "messages": [],
+            "metadata": {},
+            "is_json": False
+        }
+
+    # Try to parse as JSON first
+    try:
+        data = json.loads(transcript_str)
+
+        # Validate structure
+        if isinstance(data, dict) and "messages" in data:
+            messages = data.get("messages", [])
+            metadata = data.get("call_metadata", {})
+
+            return {
+                "messages": messages,
+                "metadata": metadata,
+                "is_json": True
+            }
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Fallback: treat as plain text transcript
+    # Try to split by common patterns like "Agent:" or "Caller:"
+    messages = []
+    lines = transcript_str.split('\n')
+
+    current_role = None
+    current_content = []
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        # Detect role changes
+        if line.lower().startswith(('agent:', 'ai:', 'assistant:')):
+            # Save previous message
+            if current_role and current_content:
+                messages.append({
+                    "role": "agent",
+                    "content": ' '.join(current_content),
+                    "timestamp": None
+                })
+            current_role = "agent"
+            current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
+
+        elif line.lower().startswith(('caller:', 'user:', 'customer:')):
+            # Save previous message
+            if current_role and current_content:
+                messages.append({
+                    "role": "caller" if current_role == "caller" else "agent",
+                    "content": ' '.join(current_content),
+                    "timestamp": None
+                })
+            current_role = "caller"
+            current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
+
+        else:
+            # Continue current message
+            if current_role:
+                current_content.append(line)
+            else:
+                # No role detected yet, assume it's a caller message
+                messages.append({
+                    "role": "caller",
+                    "content": line,
+                    "timestamp": None
+                })
+
+    # Add final message
+    if current_role and current_content:
+        messages.append({
+            "role": current_role,
+            "content": ' '.join(current_content),
+            "timestamp": None
+        })
+
+    # If no structured messages found, return the whole text as one message
+    if not messages:
+        messages = [{
+            "role": "agent",
+            "content": transcript_str,
+            "timestamp": None
+        }]
+
+    return {
+        "messages": messages,
+        "metadata": {},
+        "is_json": False
+    }

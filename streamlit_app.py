@@ -209,7 +209,7 @@ def home_page():
 
         with col2:
             # Hide credentials from database URL
-            db_url = str(settings.DATABASE_URL)
+            db_url = str(settings.DATABASE_URL_SYNC)
             db_parts = db_url.split('@')
             if len(db_parts) > 1:
                 db_display = f"...@{db_parts[1]}"
@@ -242,6 +242,7 @@ pages = {
     ],
     "System": [
         st.Page("pages/10_🔧_System.py", title="System", icon="🔧"),
+        st.Page("pages/11_📋_Logs.py", title="Logs", icon="📋"),
     ],
 }
 

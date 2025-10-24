@@ -3,7 +3,7 @@ Business service for database operations.
 Provides read-only operations for Phase 2.
 """
 from sqlalchemy import select, func, or_, desc
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from database.models import Business
 from typing import Optional, List, Dict, Any
 import logging
@@ -16,7 +16,8 @@ def get_businesses(
     limit: int = 50,
     offset: int = 0,
     search_query: Optional[str] = None,
-    industry_filter: Optional[str] = None
+    industry_filter: Optional[str] = None,
+    phone_search: Optional[str] = None
 ) -> List[Business]:
     """
     Get businesses with pagination and filters.
@@ -27,6 +28,7 @@ def get_businesses(
         offset: Pagination offset
         search_query: Search in business name
         industry_filter: Filter by industry
+        phone_search: Search by primary business phone number
 
     Returns:
         List of Business objects
@@ -42,6 +44,11 @@ def get_businesses(
         # Apply industry filter
         if industry_filter and industry_filter.lower() != "all":
             query = query.where(Business.industry.ilike(f"%{industry_filter}%"))
+
+        # Apply phone search filter
+        if phone_search:
+            search_pattern = f"%{phone_search}%"
+            query = query.where(Business.primary_business_phone_number.ilike(search_pattern))
 
         # Order by creation date (newest first)
         query = query.order_by(desc(Business.created_at))
@@ -71,7 +78,11 @@ def get_business_by_id(session: Session, business_id: str) -> Optional[Business]
         Business object or None if not found
     """
     try:
-        query = select(Business).where(Business.id == business_id)
+        query = (
+            select(Business)
+            .where(Business.id == business_id)
+            .options(joinedload(Business.twilio_phone_number))
+        )
         result = session.execute(query)
         return result.scalar_one_or_none()
 

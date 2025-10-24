@@ -28,6 +28,7 @@ def check_database_health(session: Session) -> Dict[str, Any]:
         Dict with health status:
         - status: "connected" or "error"
         - response_time_ms: Query response time in milliseconds
+        - migration_version: Current Alembic migration version
         - error: Error message if failed
     """
     try:
@@ -40,9 +41,18 @@ def check_database_health(session: Session) -> Dict[str, Any]:
         end_time = datetime.now()
         response_time = (end_time - start_time).total_seconds() * 1000
 
+        # Get Alembic migration version
+        migration_version = None
+        try:
+            version_result = session.execute(text("SELECT version_num FROM alembic_version"))
+            migration_version = version_result.scalar()
+        except Exception as e:
+            logger.warning(f"Could not fetch Alembic version: {e}")
+
         return {
             "status": "connected",
             "response_time_ms": round(response_time, 2),
+            "migration_version": migration_version,
             "error": None
         }
 
@@ -51,6 +61,7 @@ def check_database_health(session: Session) -> Dict[str, Any]:
         return {
             "status": "error",
             "response_time_ms": None,
+            "migration_version": None,
             "error": str(e)
         }
 
@@ -292,7 +303,7 @@ def get_system_info() -> Dict[str, Any]:
             "platform": platform.system(),
             "platform_version": platform.release(),
             "streamlit_version": st.__version__,
-            "database_url": str(settings.DATABASE_URL).split("@")[-1] if settings.DATABASE_URL else "N/A",  # Hide credentials
+            "database_url": str(settings.DATABASE_URL_SYNC).split("@")[-1] if settings.DATABASE_URL_SYNC else "N/A",  # Hide credentials
             "environment": getattr(settings, "APP_ENV", "unknown"),
             "current_time": datetime.utcnow().isoformat()
         }

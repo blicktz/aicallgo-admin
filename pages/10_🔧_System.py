@@ -44,7 +44,10 @@ with health_col1:
             db_health = check_database_health(session)
 
         if db_health["status"] == "connected":
-            st.success(f"✅ Connected (Response time: {db_health['response_time_ms']}ms)")
+            migration_info = ""
+            if db_health.get("migration_version"):
+                migration_info = f" | Migration: {db_health['migration_version']}"
+            st.success(f"✅ Connected (Response time: {db_health['response_time_ms']}ms){migration_info}")
         else:
             st.error(f"❌ Error: {db_health['error']}")
 
@@ -219,7 +222,10 @@ with action_col2:
                     db_health = check_database_health(session)
 
                 if db_health["status"] == "connected":
-                    st.success(f"✓ Database connected ({db_health['response_time_ms']}ms)")
+                    migration_info = ""
+                    if db_health.get("migration_version"):
+                        migration_info = f" | Migration: {db_health['migration_version']}"
+                    st.success(f"✓ Database connected ({db_health['response_time_ms']}ms){migration_info}")
                 else:
                     st.error(f"❌ Database error: {db_health['error']}")
 
@@ -239,6 +245,7 @@ with action_col3:
                     {"Metric": "Timestamp", "Value": report["timestamp"]},
                     {"Metric": "Database Status", "Value": report["database_health"]["status"]},
                     {"Metric": "Database Response Time (ms)", "Value": report["database_health"]["response_time_ms"]},
+                    {"Metric": "Database Migration Version", "Value": report["database_health"].get("migration_version", "N/A")},
                     {"Metric": "---", "Value": "---"},
                     {"Metric": "Total Users", "Value": report["table_counts"]["users_total"]},
                     {"Metric": "Active Users", "Value": report["table_counts"]["users_active"]},

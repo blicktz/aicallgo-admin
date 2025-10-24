@@ -43,7 +43,7 @@ def check_env_file():
         return False
 
     required_vars = [
-        "DATABASE_URL",
+        "DATABASE_URL_SYNC",
         "ADMIN_USERNAME",
         "ADMIN_PASSWORD_HASH"
     ]

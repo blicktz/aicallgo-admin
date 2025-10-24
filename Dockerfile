@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
 
 # Set build arguments for web-backend repository
 ARG WEB_BACKEND_REPO=https://github.com/blicktz/aicallgo-backend-cursor.git
-ARG WEB_BACKEND_BRANCH=main
+ARG WEB_BACKEND_BRANCH=staging
 ARG USE_LOCAL_COPY=false
 
 # Clone web-backend repository using GitHub token from build secret
@@ -55,10 +55,9 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy web-backend models from deps stage
-# Only copy what's needed: app/models/ and app/db/base_class.py
-COPY --from=deps-stage /tmp/web-backend/app/models ./web-backend/app/models
-COPY --from=deps-stage /tmp/web-backend/app/db ./web-backend/app/db
+# Copy entire web-backend app directory from deps stage
+# This ensures we have all models, crud operations, schemas, and other dependencies
+COPY --from=deps-stage /tmp/web-backend/app ./web-backend/app
 
 # Copy admin-board requirements and install Python dependencies
 COPY requirements.txt .

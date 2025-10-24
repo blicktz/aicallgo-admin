@@ -17,6 +17,7 @@ from utils.formatters import format_datetime, format_currency
 import sys
 from pathlib import Path
 import logging
+import os
 
 # Add web-backend to path for CreditTransactionType
 backend_path = Path(__file__).parent.parent.parent / "web-backend"
@@ -290,27 +291,6 @@ with manage_col:
                         max_chars=500
                     )
 
-                    # Preview
-                    if amount != 0 and reason and len(reason) >= 10:
-                        with st.expander("📋 Preview Adjustment"):
-                            try:
-                                with get_session() as session:
-                                    preview = calculate_adjustment_preview(
-                                        session, user.id, amount_decimal
-                                    )
-
-                                st.markdown(f"**Current Balance**: {format_minutes(preview['current_balance'])}")
-                                st.markdown(f"**Adjustment**: {format_minutes(preview['adjustment_amount'], signed=True)}")
-                                st.markdown(f"**New Balance**: {format_minutes(preview['new_balance'])}")
-
-                                # Warnings
-                                if abs(amount) > 1000:
-                                    st.warning(f"⚠️ Large adjustment: {abs(amount):.1f} min")
-                                if preview['new_balance'] < 0:
-                                    st.error("⚠️ This will result in negative balance (debt)")
-                            except Exception as e:
-                                st.error(f"Failed to calculate preview: {str(e)}")
-
                     submitted = st.form_submit_button("Apply Adjustment", type="primary")
 
                     if submitted:
@@ -350,15 +330,14 @@ with manage_col:
                         # Execute adjustment
                         try:
                             with get_session() as session:
-                                with session.begin():
-                                    transaction = adjust_credits(
-                                        session=session,
-                                        user_id=user.id,
-                                        amount=amount_decimal,
-                                        reason=reason,
-                                        admin_username=st.secrets.get("ADMIN_USERNAME", "admin"),
-                                        transaction_type=tx_type
-                                    )
+                                transaction = adjust_credits(
+                                    session=session,
+                                    user_id=user.id,
+                                    amount=amount_decimal,
+                                    reason=reason,
+                                    admin_username=os.getenv("ADMIN_USERNAME", "admin"),
+                                    transaction_type=tx_type
+                                )
 
                             st.success(f"✅ Credit adjustment successful: {format_minutes(amount_decimal, signed=True)}")
                             st.session_state.confirm_large_adjustment = False

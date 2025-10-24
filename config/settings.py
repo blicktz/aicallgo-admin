@@ -17,13 +17,13 @@ class Settings(BaseSettings):
     # Database Logging
     SQL_ECHO: bool = False  # Enable SQL query logging (independent of DEBUG)
 
-    # Database Configuration (reuse from web-backend)
-    DATABASE_URL: PostgresDsn
+    # Database Configuration (sync format - will be converted to async internally when needed)
+    DATABASE_URL_SYNC: PostgresDsn
 
     @property
     def async_database_url(self) -> str:
-        """Convert DATABASE_URL to async format for SQLAlchemy async engine."""
-        url = str(self.DATABASE_URL)
+        """Convert DATABASE_URL_SYNC to async format for SQLAlchemy async engine."""
+        url = str(self.DATABASE_URL_SYNC)
         if url.startswith("postgresql://"):
             url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
             if "sslmode=" in url:
@@ -33,10 +33,10 @@ class Settings(BaseSettings):
     @property
     def sync_database_url(self) -> str:
         """
-        Convert DATABASE_URL to sync format for SQLAlchemy sync engine.
+        Convert DATABASE_URL_SYNC to sync format for SQLAlchemy sync engine.
         Uses psycopg2 driver (default for postgresql://)
         """
-        url = str(self.DATABASE_URL)
+        url = str(self.DATABASE_URL_SYNC)
         # Remove async driver if present
         if "+asyncpg" in url:
             url = url.replace("+asyncpg", "")
@@ -51,6 +51,21 @@ class Settings(BaseSettings):
     # Streamlit Configuration
     STREAMLIT_SERVER_PORT: int = 8501
     STREAMLIT_SERVER_ADDRESS: str = "0.0.0.0"
+
+    # Redis Configuration (for cache invalidation)
+    REDIS_URL: str = "redis://:aicallgo_redis_password@aicallgo_redis:6379/0"
+    ENTITLEMENT_CACHE_KEY_PREFIX: str = "entitlements"
+
+    # Backblaze B2 Configuration (for call recordings)
+    B2_APPLICATION_KEY_ID: str
+    B2_APPLICATION_KEY: str
+    B2_BUCKET_NAME: str = "aicallgo"
+    B2_REGION: str = "us-west-004"
+
+    # Kubernetes Configuration (for logs viewer)
+    KUBECONFIG_PATH: str = ""  # Empty string means use in-cluster config
+    K8S_NAMESPACE: str = "aicallgo-staging"
+    K8S_LOGS_ENABLED: bool = True
 
     class Config:
         env_file = ".env"

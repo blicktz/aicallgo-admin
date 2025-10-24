@@ -7,11 +7,12 @@ from datetime import datetime, timedelta
 from config.auth import require_auth
 from database.connection import get_session
 from services.appointment_service import (
-    get_appointments,
-    get_appointment_by_id,
-    get_appointment_stats
+    get_appointments_by_business,
+    count_appointments_by_business,
+    get_appointment_by_id
 )
-from utils.formatters import format_datetime, format_status_badge
+from services.business_service import get_businesses
+from utils.formatters import format_datetime, format_phone, format_status_badge
 import logging
 
 logger = logging.getLogger(__name__)
@@ -21,303 +22,287 @@ if not require_auth():
     st.stop()
 
 st.title("📅 Appointments")
-st.markdown("View and search appointments")
+st.markdown("Browse appointments by business")
 
-# Search and filters
-col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+# Top panel: Filters (3 columns)
+col1, col2, col3 = st.columns([2, 2, 2])
+
 with col1:
-    search_query = st.text_input(
-        "🔍 Search",
-        placeholder="User email, end user name, or title...",
-        help="Search by user email, end user name/email, or appointment title"
-    )
+    business_name_search = st.text_input("🏢 Business Name", placeholder="Search business name...")
+
 with col2:
-    status_filter = st.selectbox(
-        "Status",
-        ["all", "confirmed", "cancelled", "completed", "no_show"],
-        help="Filter by appointment status"
-    )
+    phone_search = st.text_input("📱 Phone Number", placeholder="Search phone...")
+
 with col3:
-    source_filter = st.selectbox(
-        "Source",
-        ["all", "ai_call", "manual"],
-        help="Filter by booking source"
-    )
-with col4:
-    if st.button("🔄 Refresh", use_container_width=True):
+    date_range = st.selectbox("Date Range", ["7 days", "30 days", "90 days", "All"])
+    if st.button("🔄 Refresh"):
         st.cache_data.clear()
         st.rerun()
 
-# Date range filter
-date_col1, date_col2 = st.columns(2)
-with date_col1:
-    start_date = st.date_input(
-        "Start Date",
-        value=datetime.now() - timedelta(days=30),
-        help="Filter appointments from this date"
-    )
-with date_col2:
-    end_date = st.date_input(
-        "End Date",
-        value=datetime.now() + timedelta(days=30),
-        help="Filter appointments until this date"
-    )
+# Calculate date range
+date_from = None
+if date_range == "7 days":
+    date_from = datetime.utcnow() - timedelta(days=7)
+elif date_range == "30 days":
+    date_from = datetime.utcnow() - timedelta(days=30)
+elif date_range == "90 days":
+    date_from = datetime.utcnow() - timedelta(days=90)
 
-# Convert dates to datetime
-start_datetime = datetime.combine(start_date, datetime.min.time()) if start_date else None
-end_datetime = datetime.combine(end_date, datetime.max.time()) if end_date else None
-
-# Load statistics
-@st.cache_data(ttl=60)
-def load_stats(start_dt, end_dt):
-    """Load appointment statistics"""
-    try:
-        with get_session() as session:
-            return get_appointment_stats(session, start_date=start_dt, end_date=end_dt)
-    except Exception as e:
-        logger.error(f"Error loading stats: {e}", exc_info=True)
-        return None
-
-# Display statistics cards
-try:
-    stats = load_stats(start_datetime, end_datetime)
-    if stats:
-        st.markdown("### Statistics")
-        stat_col1, stat_col2, stat_col3, stat_col4, stat_col5 = st.columns(5)
-
-        with stat_col1:
-            st.metric("Total", stats.get("total_appointments", 0))
-
-        by_status = stats.get("by_status", {})
-        with stat_col2:
-            st.metric("Confirmed", by_status.get("confirmed", 0))
-        with stat_col3:
-            st.metric("Completed", by_status.get("completed", 0))
-        with stat_col4:
-            st.metric("Cancelled", by_status.get("cancelled", 0))
-        with stat_col5:
-            st.metric("No-show", by_status.get("no_show", 0))
-
-        # Booking source breakdown
-        by_source = stats.get("by_booking_source", {})
-        if by_source:
-            source_col1, source_col2 = st.columns(2)
-            with source_col1:
-                st.metric("AI Call Bookings", by_source.get("ai_call", 0))
-            with source_col2:
-                st.metric("Manual Bookings", by_source.get("manual", 0))
-
-        st.divider()
-
-except Exception as e:
-    logger.error(f"Failed to load statistics: {e}", exc_info=True)
-    st.warning("Unable to load statistics")
-
-# Initialize session state for selected appointment
+# Initialize session state for selected business and appointment
+if "selected_business_id" not in st.session_state:
+    st.session_state.selected_business_id = None
 if "selected_appointment_id" not in st.session_state:
     st.session_state.selected_appointment_id = None
 
-# Load appointments
+# Load businesses with filters
 @st.cache_data(ttl=60)
-def load_appointments(search, status, source, start_dt, end_dt, page_num, per_page):
-    """Load appointments with filters"""
-    try:
-        with get_session() as session:
-            offset = page_num * per_page
-            return get_appointments(
-                session,
-                limit=per_page,
-                offset=offset,
-                search_query=search if search else None,
-                status=status if status != "all" else None,
-                booking_source=source if source != "all" else None,
-                start_date=start_dt,
-                end_date=end_dt
-            )
-    except Exception as e:
-        logger.error(f"Error loading appointments: {e}", exc_info=True)
-        raise
-
-# Main layout: table + detail panel
-table_col, detail_col = st.columns([6, 4])
-
-with table_col:
-    st.markdown("### Appointments")
-
-    try:
-        appointments = load_appointments(
-            search_query,
-            status_filter,
-            source_filter,
-            start_datetime,
-            end_datetime,
-            0,
-            50
+def load_businesses(name_search, phone_search):
+    """Load businesses with filters"""
+    with get_session() as session:
+        return get_businesses(
+            session,
+            limit=100,
+            offset=0,
+            search_query=name_search if name_search else None,
+            phone_search=phone_search if phone_search else None
         )
 
-        if not appointments:
-            st.info("No appointments found matching your criteria")
+# Load appointments for selected business
+@st.cache_data(ttl=60)
+def load_appointments(business_id, date_from_str):
+    """Load appointments with filters for a specific business"""
+    with get_session() as session:
+        # Convert date string back to datetime if needed
+        date_from_dt = datetime.fromisoformat(date_from_str) if date_from_str else None
+
+        appointments = get_appointments_by_business(
+            session,
+            business_id,
+            limit=500,  # Load up to 500 appointments for scrolling
+            offset=0,
+            date_from=date_from_dt
+        )
+
+        # Get total count
+        total_count = count_appointments_by_business(
+            session,
+            business_id,
+            date_from=date_from_dt
+        )
+
+        return appointments, total_count
+
+# Main layout: 30% business list, 70% appointments
+business_col, appointments_col = st.columns([3, 7])
+
+# LEFT COLUMN: Business List
+with business_col:
+    st.markdown("### Businesses")
+
+    try:
+        businesses = load_businesses(business_name_search, phone_search)
+
+        if not businesses:
+            st.info("No businesses found")
         else:
-            # Convert to DataFrame
-            appts_df = pd.DataFrame([
+            # Convert to DataFrame for display
+            businesses_df = pd.DataFrame([
                 {
-                    "Start Time": format_datetime(a.start_time, format_str='%Y-%m-%d %H:%M'),
-                    "User": a.user.email if a.user else "N/A",
-                    "Title": a.title[:50] if a.title else "N/A",
-                    "End User": a.end_user.full_name if a.end_user else "N/A",
-                    "Status": a.status.replace("_", " ").title(),
-                    "Source": a.booking_source.replace("_", " ").title(),
-                    "ID": str(a.id)
+                    "Business Name": b.business_name or "Unnamed",
+                    "Industry": b.industry or "N/A",
+                    "Phone": format_phone(b.primary_business_phone_number) if b.primary_business_phone_number else "N/A",
+                    "ID": str(b.id)
                 }
-                for a in appointments
+                for b in businesses
             ])
 
-            # Display DataFrame with row selection
-            st.markdown("*Click on a row to view details*")
-
+            # Display scrollable business list
+            st.markdown("*Click on a row to view appointments*")
             event = st.dataframe(
-                appts_df.drop(columns=["ID"]),
+                businesses_df.drop(columns=["ID"]),
                 use_container_width=True,
                 hide_index=True,
                 on_select="rerun",
                 selection_mode="single-row",
-                height=500
+                height=600
             )
 
-            # Update selected appointment ID if a row is selected
+            # Update selected business ID if a row is selected
             if event and "selection" in event and "rows" in event["selection"]:
                 if len(event["selection"]["rows"]) > 0:
                     selected_idx = event["selection"]["rows"][0]
-                    selected_apt_id = appts_df.iloc[selected_idx]["ID"]
-                    st.session_state.selected_appointment_id = selected_apt_id
+                    selected_business_id = businesses_df.iloc[selected_idx]["ID"]
+                    st.session_state.selected_business_id = selected_business_id
+                    # Clear selected appointment when switching businesses
+                    st.session_state.selected_appointment_id = None
 
             # Show count
-            st.caption(f"Showing {len(appointments)} appointments")
+            st.caption(f"Showing {len(businesses)} businesses")
 
     except Exception as e:
-        logger.error(f"Failed to load appointments: {e}", exc_info=True)
-        st.error(f"❌ Failed to load appointments: {str(e)}")
+        st.error(f"Failed to load businesses: {str(e)}")
 
-with detail_col:
-    st.markdown("### Appointment Details")
+# RIGHT COLUMN: Appointments
+with appointments_col:
+    st.markdown("### Appointments")
 
-    if st.session_state.selected_appointment_id:
-        # Load full appointment details
-        @st.cache_data(ttl=60)
-        def load_appointment_details(apt_id):
-            """Load appointment details"""
-            try:
-                with get_session() as session:
-                    return get_appointment_by_id(session, apt_id)
-            except Exception as e:
-                logger.error(f"Error loading appointment details: {e}", exc_info=True)
-                raise
-
+    if not st.session_state.selected_business_id:
+        st.info("👈 Select a business from the list to view appointments")
+    else:
         try:
-            appointment = load_appointment_details(st.session_state.selected_appointment_id)
+            # Convert date to string for caching
+            date_from_str = date_from.isoformat() if date_from else None
 
-            if not appointment:
-                st.warning("Appointment not found")
+            # Load appointments for selected business
+            appointments, total_count = load_appointments(
+                st.session_state.selected_business_id,
+                date_from_str
+            )
+
+            if not appointments:
+                st.info("No appointments found for this business")
             else:
-                # Basic info
-                st.markdown("#### Basic Info")
-                st.markdown(f"**Title:** {appointment.title}")
-                if appointment.description:
-                    st.markdown(f"**Description:** {appointment.description}")
-                st.markdown(f"**Start:** {format_datetime(appointment.start_time)}")
-                st.markdown(f"**End:** {format_datetime(appointment.end_time)}")
-                st.markdown(f"**Timezone:** {appointment.timezone}")
+                # Display count and info
+                showing = len(appointments)
+                if showing < total_count:
+                    st.markdown(f"**Showing {showing} of {total_count} appointments** (limited to 500 for performance)")
+                else:
+                    st.markdown(f"**Total: {total_count} appointments**")
 
-                # Calculate duration
-                duration = appointment.end_time - appointment.start_time
-                duration_minutes = int(duration.total_seconds() / 60)
-                st.markdown(f"**Duration:** {duration_minutes} minutes")
+                # Create summary DataFrame for scrollable table
+                appointments_summary_df = pd.DataFrame([
+                    {
+                        "Start Time": format_datetime(apt.start_time, format_str='%Y-%m-%d %H:%M'),
+                        "Title": apt.title[:40] if apt.title else "—",
+                        "End User": apt.end_user.full_name if apt.end_user else "—",
+                        "Duration": f"{int((apt.end_time - apt.start_time).total_seconds() / 60)} min",
+                        "Status": apt.status.replace("_", " ").title(),
+                        "ID": str(apt.id)
+                    }
+                    for apt in appointments
+                ])
 
-                # Status
-                status_color = {
-                    "confirmed": "success",
-                    "cancelled": "danger",
-                    "completed": "info",
-                    "no_show": "warning"
-                }.get(appointment.status, "secondary")
-                st.markdown(f"**Status:** {format_status_badge(appointment.status)}")
-                st.markdown(f"**Source:** {appointment.booking_source.replace('_', ' ').title()}")
+                # Scrollable summary table
+                st.markdown("#### Appointment Summary")
+                st.markdown("*Click a row to view full details below*")
+
+                apt_event = st.dataframe(
+                    appointments_summary_df.drop(columns=["ID"]),
+                    use_container_width=True,
+                    hide_index=True,
+                    on_select="rerun",
+                    selection_mode="single-row",
+                    height=400
+                )
+
+                # Update selected appointment ID
+                if apt_event and "selection" in apt_event and "rows" in apt_event["selection"]:
+                    if len(apt_event["selection"]["rows"]) > 0:
+                        selected_idx = apt_event["selection"]["rows"][0]
+                        selected_apt_id = appointments_summary_df.iloc[selected_idx]["ID"]
+                        st.session_state.selected_appointment_id = selected_apt_id
 
                 st.divider()
 
-                # Parties
-                st.markdown("#### Parties")
-                if appointment.user:
-                    st.markdown(f"**User:** {appointment.user.email}")
+                # DETAIL PANEL: Show full details for selected appointment
+                if st.session_state.selected_appointment_id:
+                    # Find the selected appointment in the list
+                    selected_appointment = next(
+                        (apt for apt in appointments if str(apt.id) == st.session_state.selected_appointment_id),
+                        None
+                    )
 
-                if appointment.business:
-                    st.markdown(f"**Business:** {appointment.business.business_name}")
+                    if selected_appointment:
+                        st.markdown("#### Appointment Details")
 
-                if appointment.end_user:
-                    st.markdown("**End User (Caller):**")
-                    st.markdown(f"  - Name: {appointment.end_user.full_name}")
-                    st.markdown(f"  - Phone: {appointment.end_user.phone_number}")
-                    if appointment.end_user.email:
-                        st.markdown(f"  - Email: {appointment.end_user.email}")
+                        # Basic info
+                        st.markdown("**Basic Info**")
+                        st.markdown(f"**Title:** {selected_appointment.title}")
+                        if selected_appointment.description:
+                            st.markdown(f"**Description:** {selected_appointment.description}")
+                        st.markdown(f"**Start:** {format_datetime(selected_appointment.start_time)}")
+                        st.markdown(f"**End:** {format_datetime(selected_appointment.end_time)}")
 
-                st.divider()
+                        # Calculate duration
+                        duration = selected_appointment.end_time - selected_appointment.start_time
+                        duration_minutes = int(duration.total_seconds() / 60)
+                        st.markdown(f"**Duration:** {duration_minutes} minutes")
+                        st.markdown(f"**Timezone:** {selected_appointment.timezone}")
+                        st.markdown(f"**Status:** {format_status_badge(selected_appointment.status)}")
+                        st.markdown(f"**Source:** {selected_appointment.booking_source.replace('_', ' ').title()}")
 
-                # Tracking
-                st.markdown("#### Tracking")
-                if appointment.confirmation_sent_at:
-                    st.markdown(f"**Confirmation Sent:** {format_datetime(appointment.confirmation_sent_at)}")
+                        st.divider()
+
+                        # Parties
+                        st.markdown("**Parties**")
+                        if selected_appointment.user:
+                            st.markdown(f"**User:** {selected_appointment.user.email}")
+
+                        if selected_appointment.business:
+                            st.markdown(f"**Business:** {selected_appointment.business.business_name}")
+
+                        if selected_appointment.end_user:
+                            st.markdown("**End User (Caller):**")
+                            st.markdown(f"  - Name: {selected_appointment.end_user.full_name}")
+                            st.markdown(f"  - Phone: {selected_appointment.end_user.phone_number}")
+                            if selected_appointment.end_user.email:
+                                st.markdown(f"  - Email: {selected_appointment.end_user.email}")
+
+                        st.divider()
+
+                        # Tracking
+                        st.markdown("**Tracking**")
+                        if selected_appointment.confirmation_sent_at:
+                            st.markdown(f"**Confirmation Sent:** {format_datetime(selected_appointment.confirmation_sent_at)}")
+                        else:
+                            st.caption("No confirmation sent")
+
+                        if selected_appointment.reminder_sent_at:
+                            st.markdown(f"**Reminder Sent:** {format_datetime(selected_appointment.reminder_sent_at)}")
+                        else:
+                            st.caption("No reminder sent")
+
+                        if selected_appointment.cancelled_at:
+                            st.markdown(f"**Cancelled At:** {format_datetime(selected_appointment.cancelled_at)}")
+                            if selected_appointment.cancellation_reason:
+                                st.markdown(f"**Reason:** {selected_appointment.cancellation_reason}")
+
+                        st.divider()
+
+                        # Linked call log
+                        st.markdown("**Linked Call Log**")
+                        if selected_appointment.call_log:
+                            st.markdown(f"**Call ID:** {selected_appointment.call_log.id}")
+                            st.markdown(f"**Call Status:** {selected_appointment.call_log.call_status}")
+                            if selected_appointment.call_log.call_start_time:
+                                st.markdown(f"**Call Time:** {format_datetime(selected_appointment.call_log.call_start_time)}")
+                        else:
+                            st.caption("No linked call log")
+
+                        # Extra data
+                        if selected_appointment.extra_data and selected_appointment.extra_data != {}:
+                            st.divider()
+                            st.markdown("**Extra Data**")
+                            st.json(selected_appointment.extra_data)
+                    else:
+                        st.warning("Selected appointment not found")
                 else:
-                    st.caption("No confirmation sent")
-
-                if appointment.reminder_sent_at:
-                    st.markdown(f"**Reminder Sent:** {format_datetime(appointment.reminder_sent_at)}")
-                else:
-                    st.caption("No reminder sent")
-
-                if appointment.cancelled_at:
-                    st.markdown(f"**Cancelled At:** {format_datetime(appointment.cancelled_at)}")
-                    if appointment.cancellation_reason:
-                        st.markdown(f"**Reason:** {appointment.cancellation_reason}")
-
-                st.divider()
-
-                # Linked call log
-                st.markdown("#### Linked Call Log")
-                if appointment.call_log:
-                    st.markdown(f"**Call ID:** {appointment.call_log.id}")
-                    st.markdown(f"**Call Status:** {appointment.call_log.status}")
-                    if hasattr(appointment.call_log, 'created_at'):
-                        st.markdown(f"**Call Time:** {format_datetime(appointment.call_log.created_at)}")
-                else:
-                    st.caption("No linked call log")
-
-                # Extra data
-                if appointment.extra_data and appointment.extra_data != {}:
-                    st.divider()
-                    st.markdown("#### Extra Data")
-                    st.json(appointment.extra_data)
+                    st.info("👆 Select an appointment from the table above to view full details")
 
         except Exception as e:
-            logger.error(f"Failed to load appointment details: {e}", exc_info=True)
-            st.error(f"❌ Failed to load appointment details: {str(e)}")
-
-    else:
-        st.info("Select an appointment from the table to view details")
+            st.error(f"Failed to load appointments: {str(e)}")
 
 # Export functionality
 st.divider()
-
-if st.button("📥 Export to CSV", use_container_width=True):
+if st.button("📥 Export Current View to CSV", use_container_width=True):
     try:
-        with st.spinner("Exporting appointments..."):
-            appointments = load_appointments(
-                search_query,
-                status_filter,
-                source_filter,
-                start_datetime,
-                end_datetime,
-                0,
-                1000  # Load more for export
+        if not st.session_state.selected_business_id:
+            st.warning("Please select a business first")
+        else:
+            date_from_str = date_from.isoformat() if date_from else None
+            appointments, _ = load_appointments(
+                st.session_state.selected_business_id,
+                date_from_str
             )
 
             if not appointments:
