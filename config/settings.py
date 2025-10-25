@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     WEB_BACKEND_URL: str = "http://aicallgo_app:8000"  # Web backend base URL (Docker service name)
     INTERNAL_API_KEY: str  # Internal API key for service-to-service auth
 
+    # Twilio Phone Number Pool Configuration
+    PN_ACTIVE_NUMBER_MAX_POOL_SIZE: int = 4  # Maximum active numbers in pool
+    PN_PURCHASE_BATCH_SIZE: int = 1  # How many to buy at once
+    PN_MAX_UNUSED: int = 2  # Max unassigned available numbers
+
     class Config:
         env_file = ".env"
         case_sensitive = True
