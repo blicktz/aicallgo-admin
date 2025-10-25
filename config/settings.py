@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     K8S_NAMESPACE: str = "aicallgo-staging"
     K8S_LOGS_ENABLED: bool = True
 
+    # Web Backend API Configuration (for internal API calls)
+    WEB_BACKEND_URL: str = "http://aicallgo_app:8000"  # Web backend base URL (Docker service name)
+    INTERNAL_API_KEY: str  # Internal API key for service-to-service auth
+
     class Config:
         env_file = ".env"
         case_sensitive = True
