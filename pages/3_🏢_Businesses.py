@@ -11,6 +11,7 @@ from services.business_service import get_businesses, get_business_by_id, get_in
 from services.user_service import get_user_by_id
 from services.call_log_service import get_calls_by_business
 from utils.formatters import format_datetime, format_phone, format_status_badge
+from components.carrier_instructions import render_carrier_instructions, render_carrier_research_section
 
 # Auth check
 if not require_auth():
@@ -151,6 +152,16 @@ with detail_col:
                     st.markdown(f"**Website:** [{business.website_url}]({business.website_url})")
                 st.markdown(f"**Timezone:** {business.timezone or 'N/A'}")
                 st.markdown(f"**Created:** {format_datetime(business.created_at)}")
+
+                st.divider()
+
+                # Carrier Research Section
+                render_carrier_research_section(business)
+
+                st.divider()
+
+                # Carrier Call Forwarding Instructions
+                render_carrier_instructions(business)
 
                 st.divider()
 

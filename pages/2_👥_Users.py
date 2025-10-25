@@ -144,6 +144,43 @@ with detail_col:
 
                 st.divider()
 
+                # Onboarding & Verification
+                st.markdown("#### Onboarding & Verification")
+
+                # Call forwarding verified status
+                verified_badge = "✅ Verified" if user.call_forwarding_verified else "❌ Not Verified"
+                verified_color = "green" if user.call_forwarding_verified else "red"
+                st.markdown(f"**Call Forwarding:** :{verified_color}[{verified_badge}]")
+
+                # Onboarding status
+                if user.onboarding_status:
+                    status_display = user.onboarding_status.replace('_', ' ').title()
+                    st.markdown(f"**Onboarding Status:** {status_display}")
+
+                # Onboarding completed timestamp
+                if user.onboarding_completed_at:
+                    st.markdown(f"**Completed At:** {format_datetime(user.onboarding_completed_at)}")
+
+                # Extract data from onboarding_data JSONB field
+                if user.onboarding_data:
+                    onboarding_data = user.onboarding_data
+
+                    # Test phone number
+                    if onboarding_data.get('phone_number') or onboarding_data.get('test_phone_number'):
+                        phone = onboarding_data.get('phone_number') or onboarding_data.get('test_phone_number')
+                        st.markdown(f"**Test Phone:** {phone}")
+
+                    # Carrier/Provider information
+                    if onboarding_data.get('provider') or onboarding_data.get('carrier_name'):
+                        carrier = onboarding_data.get('provider') or onboarding_data.get('carrier_name')
+                        st.markdown(f"**Carrier:** {carrier}")
+
+                    # Verification code (for debugging/support)
+                    if onboarding_data.get('verification_code'):
+                        st.markdown(f"**Verification Code:** `{onboarding_data.get('verification_code')}`")
+
+                st.divider()
+
                 # Subscription info
                 st.markdown("#### Subscription")
                 if details["subscription"]:
