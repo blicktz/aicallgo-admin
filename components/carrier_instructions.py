@@ -4,8 +4,113 @@ Carrier instructions component for displaying call forwarding setup.
 import streamlit as st
 from typing import Dict, Any
 import logging
+import time
 
 logger = logging.getLogger(__name__)
+
+
+def render_carrier_research_section(business: Any):
+    """
+    Render carrier research/verification section with button to trigger research.
+
+    Args:
+        business: Business object with id and primary_business_phone_number
+
+    Displays:
+        - Status indicator (carrier status)
+        - Button to research/verify carrier
+        - Loading state during research (30+ seconds possible)
+        - Success/warning/error messages
+    """
+    from services.carrier_service import research_carrier_for_business
+
+    # Check if business has primary phone number
+    if not business.primary_business_phone_number:
+        return  # Don't show anything if no phone number
+
+    st.markdown("### 🔍 Carrier Verification")
+
+    # Create columns for status and button
+    col1, col2 = st.columns([3, 1])
+
+    with col1:
+        st.markdown("**Verify that carrier instructions are available in the database**")
+        st.caption("This ensures call forwarding instructions can be displayed correctly")
+
+    with col2:
+        # Research button
+        if st.button("Research Carrier", use_container_width=True, type="primary"):
+            # Store button click in session state
+            st.session_state['research_clicked'] = True
+            st.session_state['research_result'] = None
+
+    # Handle research action
+    if st.session_state.get('research_clicked', False):
+        # Show loading state
+        with st.spinner("🔬 Researching carrier instructions... This may take up to 60 seconds"):
+            start_time = time.time()
+
+            # Call research endpoint
+            result = research_carrier_for_business(str(business.id))
+
+            elapsed_time = time.time() - start_time
+
+            # Store result in session state
+            st.session_state['research_result'] = result
+            st.session_state['research_elapsed_time'] = elapsed_time
+
+        # Clear the clicked state
+        st.session_state['research_clicked'] = False
+
+        # Force rerun to show result
+        st.rerun()
+
+    # Display research result if available
+    if st.session_state.get('research_result') is not None:
+        result = st.session_state['research_result']
+        elapsed_time = st.session_state.get('research_elapsed_time', 0)
+
+        if result:
+            # Success
+            carrier_name = result.get("carrier_name", "Unknown")
+            was_researched = result.get("was_researched", False)
+            message = result.get("message", "")
+
+            if was_researched:
+                # New research was performed
+                st.success(
+                    f"✓ {message}\n\n"
+                    f"**Carrier:** {carrier_name}\n\n"
+                    f"**Research time:** {elapsed_time:.1f} seconds"
+                )
+            else:
+                # Instructions already existed
+                st.info(
+                    f"ℹ️ {message}\n\n"
+                    f"**Carrier:** {carrier_name}"
+                )
+
+            # Add clear button
+            if st.button("Clear Result", use_container_width=True):
+                st.session_state['research_result'] = None
+                st.rerun()
+
+        else:
+            # Error or no result
+            st.error(
+                "❌ Failed to research carrier instructions.\n\n"
+                "Possible reasons:\n"
+                "- Business does not have a primary phone number configured\n"
+                "- Carrier lookup failed\n"
+                "- AI research service unavailable\n"
+                "- Request timeout"
+            )
+
+            # Add retry button
+            if st.button("Retry", use_container_width=True):
+                st.session_state['research_clicked'] = True
+                st.session_state['research_result'] = None
+                st.rerun()
 
 
 def render_carrier_instructions(business: Any):
