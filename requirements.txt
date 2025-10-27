@@ -41,3 +41,6 @@ humanize==4.9.0
 
 # Log Processing
 ansi2html>=1.9.0
+
+# HTTP Client (for web-backend API calls)
+httpx>=0.25.0
