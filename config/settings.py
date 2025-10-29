@@ -52,9 +52,14 @@ class Settings(BaseSettings):
     STREAMLIT_SERVER_PORT: int = 8501
     STREAMLIT_SERVER_ADDRESS: str = "0.0.0.0"
 
-    # Redis Configuration (for cache invalidation)
+    # Redis Configuration (for cache invalidation and real-time monitoring)
     REDIS_URL: str = "redis://:aicallgo_redis_password@aicallgo_redis:6379/0"
     ENTITLEMENT_CACHE_KEY_PREFIX: str = "entitlements"
+
+    # Redis Channels (matching web-backend call logging system)
+    REDIS_CHANNEL_CALL_LOGS: str = "call_logs"
+    REDIS_CHANNEL_HEARTBEAT: str = "call_heartbeat"
+    REDIS_CHANNEL_DLQ: str = "call_logs_dlq"
 
     # Backblaze B2 Configuration (for call recordings)
     B2_APPLICATION_KEY_ID: str

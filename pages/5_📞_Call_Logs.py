@@ -11,6 +11,7 @@ from services.call_log_service import get_calls_by_business, count_calls_by_busi
 from services.business_service import get_businesses
 from services.recording_service import get_recording_service
 from utils.formatters import format_datetime, format_phone, format_duration, format_status_badge, parse_transcript_json
+from components.call_monitoring_panel import render_monitoring_panel
 
 # Auth check
 if not require_auth():
@@ -18,6 +19,14 @@ if not require_auth():
 
 st.title("📞 Call Logs")
 st.markdown("Browse call records by business")
+
+# Real-Time Monitoring Panel (NEW)
+try:
+    render_monitoring_panel()
+    st.divider()
+except Exception as e:
+    st.warning(f"⚠️ Monitoring panel unavailable: {str(e)}")
+    st.divider()
 
 # Top panel: Filters (4 columns)
 col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
