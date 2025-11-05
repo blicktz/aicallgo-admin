@@ -98,7 +98,7 @@ def get_deployment_metrics(
     from services.k8s_service import _get_pods_for_deployment
 
     # Get pod list
-    pods = _get_pods_for_deployment(deployment_name, namespace)
+    pods = _get_pods_for_deployment(deployment_name)
 
     # Get metrics for all pods
     all_metrics = get_pod_metrics(namespace)
