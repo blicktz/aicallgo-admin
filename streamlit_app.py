@@ -246,6 +246,7 @@ pages = {
     "System": [
         st.Page("pages/10_🔧_System.py", title="System", icon="🔧"),
         st.Page("pages/11_📋_Logs.py", title="Logs", icon="📋"),
+        st.Page("pages/13_📊_Performance.py", title="Performance", icon="📊"),
     ],
 }
 
