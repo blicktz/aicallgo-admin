@@ -21,7 +21,7 @@ from services.k8s_metrics_service import (
     format_cpu,
     format_memory
 )
-from config.settings import K8S_NAMESPACE
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ def create_time_series_chart(
 def get_service_health(deployment_name: str) -> str:
     """Get health status emoji for a service (cached)."""
     try:
-        metrics = get_deployment_metrics(deployment_name, K8S_NAMESPACE)
+        metrics = get_deployment_metrics(deployment_name, settings.K8S_NAMESPACE)
 
         # Check if any pod is critical
         if any(pod["status"] == "🔴" for pod in metrics["pods"]):
@@ -168,7 +168,7 @@ def render_metrics_panel(service_name: str):
 
     # Fetch metrics
     try:
-        metrics = get_deployment_metrics(service_name, K8S_NAMESPACE)
+        metrics = get_deployment_metrics(service_name, settings.K8S_NAMESPACE)
     except Exception as e:
         st.error(f"Error fetching metrics: {e}")
         logger.error(f"Error fetching metrics for {service_name}: {e}")
