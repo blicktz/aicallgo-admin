@@ -166,7 +166,7 @@ def get_deployment_metrics(
 
         pod_details.append({
             "name": pod_name,
-            "cpu_cores": round(pod_cpu, 2),
+            "cpu_cores": round(pod_cpu, 4),
             "memory_gb": round(pod_memory, 2),
             "status": health
         })
@@ -174,9 +174,9 @@ def get_deployment_metrics(
     pod_count = len(pod_details)
 
     result = {
-        "total_cpu_cores": round(total_cpu, 2),
+        "total_cpu_cores": round(total_cpu, 4),
         "total_memory_gb": round(total_memory, 2),
-        "avg_cpu_cores": round(total_cpu / pod_count, 2) if pod_count > 0 else 0,
+        "avg_cpu_cores": round(total_cpu / pod_count, 4) if pod_count > 0 else 0,
         "avg_memory_gb": round(total_memory / pod_count, 2) if pod_count > 0 else 0,
         "cpu_limit_cores": cpu_limit,
         "memory_limit_gb": memory_limit,
