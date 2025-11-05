@@ -1,13 +1,16 @@
 """
 User service for database operations.
 Provides read-only operations for Phase 2.
+Phase 3: Added email update functionality for admin operations.
 """
 from sqlalchemy import select, func, or_, desc
 from sqlalchemy.orm import Session
 from database.models import User
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timedelta
 import logging
+import re
+import secrets
 
 logger = logging.getLogger(__name__)
 
@@ -178,3 +181,94 @@ def get_recent_signups(session: Session, limit: int = 10) -> List[User]:
     except Exception as e:
         logger.error(f"Error fetching recent signups: {e}")
         raise
+
+
+def validate_email_format(email: str) -> bool:
+    """
+    Validate email format using regex.
+
+    Args:
+        email: Email address to validate
+
+    Returns:
+        True if email format is valid, False otherwise
+    """
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None
+
+
+def generate_deleted_email(original_email: str) -> str:
+    """
+    Generate a "deleted" email address format.
+
+    Converts user@example.com to user_deleted_abc12345@example.com
+
+    Args:
+        original_email: Original email address
+
+    Returns:
+        Modified email with _deleted_{random} suffix before @
+    """
+    if '@' not in original_email:
+        raise ValueError("Invalid email format")
+
+    username, domain = original_email.split('@', 1)
+    random_suffix = secrets.token_hex(4)  # 8 character hex string
+    return f"{username}_deleted_{random_suffix}@{domain}"
+
+
+def update_user_email(
+    session: Session,
+    user_id: str,
+    new_email: str
+) -> Tuple[bool, str]:
+    """
+    Update user's email address.
+
+    Phase 3 admin functionality to change user email.
+    Use case: Soft delete user by changing email to _deleted_ format,
+    freeing up the original email for a new account.
+
+    Args:
+        session: Database session
+        user_id: User UUID
+        new_email: New email address (must be valid format and unique)
+
+    Returns:
+        Tuple of (success: bool, message: str)
+        - (True, "Success message") if updated
+        - (False, "Error message") if failed
+    """
+    try:
+        # Validate email format
+        if not validate_email_format(new_email):
+            return (False, f"Invalid email format: {new_email}")
+
+        # Get the user
+        user = get_user_by_id(session, user_id)
+        if not user:
+            return (False, f"User not found with ID: {user_id}")
+
+        original_email = user.email
+
+        # Check if new email is the same as current
+        if new_email == original_email:
+            return (False, "New email is the same as current email")
+
+        # Check if new email already exists (excluding current user)
+        existing_user = get_user_by_email(session, new_email)
+        if existing_user and existing_user.id != user_id:
+            return (False, f"Email already in use: {new_email}")
+
+        # Update email
+        user.email = new_email
+        session.commit()
+
+        logger.info(f"Admin updated user email: {user_id} from {original_email} to {new_email}")
+        return (True, f"Email updated successfully from {original_email} to {new_email}")
+
+    except Exception as e:
+        session.rollback()
+        error_msg = f"Error updating user email: {str(e)}"
+        logger.error(error_msg)
+        return (False, error_msg)

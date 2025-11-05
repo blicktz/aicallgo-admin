@@ -5,7 +5,12 @@ import streamlit as st
 import pandas as pd
 from config.auth import require_auth
 from database.connection import get_session
-from services.user_service import get_users, get_user_by_id
+from services.user_service import (
+    get_users,
+    get_user_by_id,
+    update_user_email,
+    generate_deleted_email
+)
 from services.business_service import get_businesses_by_user
 from services.billing_service import get_subscription_by_user, get_credit_balance
 from components.tables import render_dataframe
@@ -141,6 +146,93 @@ with detail_col:
                 if user.stripe_customer_id:
                     stripe_url = f"https://dashboard.stripe.com/customers/{user.stripe_customer_id}"
                     st.markdown(f"**Stripe:** [View Customer]({stripe_url})")
+
+                st.divider()
+
+                # Email Management
+                st.markdown("#### ✉️ Email Management")
+
+                with st.expander("Edit Email Address", expanded=False):
+                    st.caption("⚠️ Use case: 'Soft delete' user by changing email to _deleted_ format, freeing up original email for new account")
+
+                    # Manual email edit
+                    st.markdown("**Option 1: Manual Edit**")
+                    new_email = st.text_input(
+                        "New Email Address",
+                        value="",
+                        placeholder="user_deleted_abc123@example.com",
+                        key=f"email_input_{user.id}"
+                    )
+
+                    col_manual, col_quick = st.columns(2)
+
+                    with col_manual:
+                        if st.button("💾 Update Email", key=f"update_btn_{user.id}", use_container_width=True):
+                            if new_email:
+                                with get_session() as session:
+                                    success, message = update_user_email(session, str(user.id), new_email)
+                                    if success:
+                                        st.success(message)
+                                        # Clear cache to refresh data
+                                        st.cache_data.clear()
+                                        st.rerun()
+                                    else:
+                                        st.error(message)
+                            else:
+                                st.warning("Please enter a new email address")
+
+                    st.divider()
+
+                    # Quick soft delete
+                    st.markdown("**Option 2: Quick Soft Delete**")
+                    st.caption("Automatically generates: `{username}_deleted_{random}@{domain}`")
+
+                    # Initialize session state for generated email
+                    generated_email_key = f"generated_deleted_email_{user.id}"
+                    if generated_email_key not in st.session_state:
+                        st.session_state[generated_email_key] = None
+
+                    with col_quick:
+                        # Button 1: Generate deleted email
+                        if st.button("🗑️ Generate Deleted Email", key=f"soft_delete_btn_{user.id}", use_container_width=True):
+                            try:
+                                deleted_email = generate_deleted_email(user.email)
+                                st.session_state[generated_email_key] = deleted_email
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error generating deleted email: {str(e)}")
+
+                    # Show preview and confirm button if email was generated
+                    if st.session_state[generated_email_key]:
+                        st.info(f"📧 Generated: `{st.session_state[generated_email_key]}`")
+
+                        col_confirm, col_cancel = st.columns(2)
+
+                        with col_confirm:
+                            # Button 2: Confirm and apply (now independent!)
+                            if st.button("✅ Confirm & Apply", key=f"confirm_delete_{user.id}", use_container_width=True):
+                                with get_session() as session:
+                                    success, message = update_user_email(
+                                        session,
+                                        str(user.id),
+                                        st.session_state[generated_email_key]
+                                    )
+                                    if success:
+                                        st.success(f"✅ {message}")
+                                        st.info(f"Original email `{user.email}` is now available for new account registration")
+                                        # Clear the generated email from session state
+                                        st.session_state[generated_email_key] = None
+                                        # Clear cache to refresh data
+                                        st.cache_data.clear()
+                                        st.rerun()
+                                    else:
+                                        st.error(message)
+
+                        with col_cancel:
+                            # Button 3: Cancel
+                            if st.button("❌ Cancel", key=f"cancel_delete_{user.id}", use_container_width=True):
+                                st.session_state[generated_email_key] = None
+                                st.rerun()
 
                 st.divider()
 
