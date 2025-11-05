@@ -202,14 +202,18 @@ def parse_cpu(cpu_string: str) -> float:
         "1" -> 1.0
         "1.5" -> 1.5
         "1000m" -> 1.0
+        "88145286n" -> 0.088145286
     """
     if not cpu_string:
         return 0.0
 
     cpu_string = str(cpu_string).strip()
 
-    if cpu_string.endswith("m"):
-        # Millicores
+    if cpu_string.endswith("n"):
+        # Nanocores (1 core = 1,000,000,000 nanocores)
+        return float(cpu_string[:-1]) / 1_000_000_000
+    elif cpu_string.endswith("m"):
+        # Millicores (1 core = 1,000 millicores)
         return float(cpu_string[:-1]) / 1000
     else:
         # Cores
