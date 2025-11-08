@@ -221,3 +221,125 @@ def research_carrier_for_business(business_id: str) -> Optional[Dict[str, Any]]:
             exc_info=True
         )
         return None
+
+
+def research_carrier_by_phone(phone_number: str) -> Optional[Dict[str, Any]]:
+    """
+    Research carrier instructions for any phone number (independent of business records).
+
+    This function:
+    1. Calls the web-backend internal API with a phone number
+    2. Backend performs Twilio lookup
+    3. Checks if carrier instructions exist in database
+    4. If not, triggers AI research using Perplexity Sonar (can take 30+ seconds)
+    5. Returns comprehensive carrier information including instructions
+
+    Args:
+        phone_number: Phone number in E.164 format (e.g., +15551234567)
+
+    Returns:
+        Dict containing carrier information and instructions, or None if request failed
+
+    The returned dict contains:
+        - carrier_found: Boolean indicating if instructions exist/were created
+        - carrier_name: Name of the carrier
+        - carrier_key: Carrier key (if found)
+        - carrier_type: Type of carrier (cellular, voip, landline)
+        - was_researched: True if new research was performed
+        - message: Status message for display
+        - phone_number: The phone number that was looked up
+        - setup_code: Formatted dial code with placeholder (if available)
+        - setup_steps: List of manual setup steps (if available)
+        - disable_code: Code to disable forwarding (if available)
+        - conditional_options: Dict with busy/no_answer/unreachable options (if available)
+        - notes: List of important notes (if available)
+        - help_url: Link to carrier support (if available)
+    """
+    try:
+        # Construct API URL
+        api_url = f"{settings.WEB_BACKEND_URL}/api/v1/internal/carrier-lookup"
+
+        # Make request with internal API key auth
+        headers = {
+            "X-API-Key": settings.INTERNAL_API_KEY,
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "phone_number": phone_number
+        }
+
+        logger.info(
+            f"Looking up carrier for phone number",
+            extra={"phone_number": phone_number}
+        )
+
+        # Use longer timeout for research (can take 30+ seconds)
+        response = requests.post(
+            api_url,
+            headers=headers,
+            json=payload,
+            timeout=60  # 60 second timeout for AI research
+        )
+
+        # Check if request was successful
+        if response.status_code == 200:
+            result = response.json()
+            logger.info(
+                f"Carrier lookup completed successfully",
+                extra={
+                    "phone_number": phone_number,
+                    "carrier_name": result.get("carrier_name"),
+                    "was_researched": result.get("was_researched")
+                }
+            )
+            return result
+
+        elif response.status_code == 404:
+            logger.warning(
+                f"Could not determine carrier for phone number",
+                extra={"phone_number": phone_number, "status_code": 404}
+            )
+            return None
+
+        elif response.status_code == 400:
+            # Invalid phone number format
+            logger.warning(
+                f"Invalid phone number format",
+                extra={"phone_number": phone_number, "response": response.text}
+            )
+            return {"error": "Invalid phone number format. Use E.164 format (e.g., +15551234567)"}
+
+        else:
+            logger.error(
+                f"Failed to lookup carrier by phone",
+                extra={
+                    "phone_number": phone_number,
+                    "status_code": response.status_code,
+                    "response": response.text
+                }
+            )
+            return None
+
+    except requests.exceptions.Timeout:
+        logger.error(
+            f"Timeout looking up carrier (operation took >60 seconds)",
+            extra={"phone_number": phone_number}
+        )
+        return {"error": "Request timeout - operation took too long"}
+
+    except requests.exceptions.RequestException as e:
+        logger.error(
+            f"Request error looking up carrier: {e}",
+            extra={"phone_number": phone_number},
+            exc_info=True
+        )
+        return None
+
+    except Exception as e:
+        logger.error(
+            f"Unexpected error looking up carrier: {e}",
+            extra={"phone_number": phone_number},
+            exc_info=True
+        )
+        return None

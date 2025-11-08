@@ -236,6 +236,7 @@ pages = {
     ],
     "Telephony": [
         st.Page("pages/12_📞_Twilio.py", title="Twilio Pool", icon="📞"),
+        st.Page("pages/14_🔍_Call_Forward_Research.py", title="Call Forward Research", icon="🔍"),
     ],
     "Billing": [
         st.Page("pages/6_💳_Billing.py", title="Billing", icon="💳"),
