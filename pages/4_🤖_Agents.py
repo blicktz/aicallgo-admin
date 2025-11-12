@@ -46,7 +46,6 @@ if "selected_agent_id" not in st.session_state:
     st.session_state.selected_agent_id = None
 
 # Load agents
-@st.cache_data(ttl=60)
 def load_agents(search, tone, page_num, per_page):
     """Load agents with filters"""
     with get_session() as session:
@@ -113,7 +112,6 @@ with detail_col:
 
     if st.session_state.selected_agent_id:
         # Load full agent details
-        @st.cache_data(ttl=60)
         def load_agent_details(agent_id):
             """Load agent details with related data"""
             with get_session() as session:
@@ -228,8 +226,28 @@ with detail_col:
                 # Industry Knowledge
                 if agent.customized_industry_knowledge:
                     st.markdown("#### Customized Industry Knowledge")
+
+                    # Edit button at the top
+                    if st.button(
+                        "📝 Edit Industry Knowledge",
+                        type="primary",
+                        use_container_width=True,
+                        help="Edit customized fields for each call type"
+                    ):
+                        business_name = agent.business.business_name if agent.business else "Unknown Business"
+                        # Use session_state to pass data (query_params are cleared by st.switch_page bug)
+                        st.session_state.edit_agent_id = str(agent.id)
+                        st.session_state.edit_business_name = business_name
+                        st.switch_page("pages/15_📝_Edit_Industry_Knowledge.py")
+
+                    st.markdown("")  # Add spacing
+
+                    # Read-only JSON viewer
                     with st.expander("📚 View Industry Knowledge (JSON)", expanded=False):
                         st.json(agent.customized_industry_knowledge)
+                else:
+                    st.markdown("#### Customized Industry Knowledge")
+                    st.info("No industry knowledge configured for this agent.")
 
                 st.divider()
 
