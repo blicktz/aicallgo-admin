@@ -246,7 +246,6 @@ def main():
                                     call_types_updates=updates
                                 )
 
-                                st.success("✅ Industry knowledge updated successfully!")
                                 st.session_state.unsaved_changes = False
 
                                 # Update session state with fresh data from API response
@@ -254,22 +253,16 @@ def main():
                                     st.session_state.fresh_industry_knowledge = result["customized_industry_knowledge"]
                                     logger.info(f"Updated session state with fresh data for agent {agent_id}")
 
-                                # Show summary
-                                st.balloons()
-                                st.info(
-                                    f"Updated {len(updates)} call types for {business_name}. "
-                                    "Refreshing to show updated data..."
-                                )
-
                                 logger.info(f"Successfully updated industry knowledge for agent {agent_id}")
 
                                 # Clear all caches to ensure fresh data on navigation
                                 st.cache_data.clear()
 
-                                # Trigger rerun to refresh UI with saved data
-                                st.rerun()
+                                # Redirect to Agents page after successful save
+                                st.switch_page("pages/4_🤖_Agents.py")
 
                             except Exception as e:
+                                st.toast(f"❌ Failed to save changes: {str(e)}", icon="❌")
                                 st.error(f"❌ Failed to save changes: {str(e)}")
                                 logger.error(f"Failed to update industry knowledge: {e}", exc_info=True)
 
