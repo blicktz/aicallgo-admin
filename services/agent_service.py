@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session, selectinload
 from database.models import AIAgentConfiguration, Business, CustomQuestion, FAQ
 from typing import Optional, List, Dict, Any
 import logging
+import requests
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -248,4 +250,70 @@ def get_agent_count(session: Session) -> int:
 
     except Exception as e:
         logger.error(f"Error counting agents: {e}")
+        raise
+
+
+def update_industry_knowledge(
+    agent_id: str,
+    call_types_updates: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """
+    Update industry knowledge for an AI agent via admin API.
+
+    Args:
+        agent_id: UUID of the AI agent configuration
+        call_types_updates: List of dictionaries with call_type_name and editable fields
+            Example: [
+                {
+                    "call_type_name": "Emergency/Urgent Dental Pain",
+                    "information_to_provide": "Updated info...",
+                    "fallback_procedure": "Updated procedure..."
+                }
+            ]
+
+    Returns:
+        API response dictionary with updated industry knowledge
+
+    Raises:
+        Exception if API call fails
+    """
+    try:
+        # Get API configuration from environment
+        api_base_url = os.getenv("WEB_BACKEND_URL", "http://localhost:8000")
+        internal_api_key = os.getenv("INTERNAL_API_KEY")
+
+        if not internal_api_key:
+            raise ValueError("INTERNAL_API_KEY environment variable not set")
+
+        # Prepare API request
+        url = f"{api_base_url}/api/v1/internal/admin/agents/{agent_id}/industry-knowledge"
+        headers = {
+            "Authorization": f"Bearer {internal_api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "call_types": call_types_updates
+        }
+
+        logger.info(
+            f"Updating industry knowledge for agent {agent_id} with {len(call_types_updates)} call types"
+        )
+
+        # Make PATCH request
+        response = requests.patch(url, json=payload, headers=headers, timeout=30)
+        response.raise_for_status()
+
+        result = response.json()
+        logger.info(f"Successfully updated industry knowledge for agent {agent_id}")
+
+        return result
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"API request failed: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            logger.error(f"Response status: {e.response.status_code}")
+            logger.error(f"Response body: {e.response.text}")
+        raise Exception(f"Failed to update industry knowledge: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error updating industry knowledge: {e}")
         raise

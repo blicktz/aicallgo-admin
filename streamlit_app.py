@@ -231,6 +231,7 @@ pages = {
         st.Page("pages/2_👥_Users.py", title="Users", icon="👥"),
         st.Page("pages/3_🏢_Businesses.py", title="Businesses", icon="🏢"),
         st.Page("pages/4_🤖_Agents.py", title="Agents", icon="🤖"),
+        st.Page("pages/15_📝_Edit_Industry_Knowledge.py", title="Edit Industry Knowledge", icon="📝"),
         st.Page("pages/5_📞_Call_Logs.py", title="Call Logs", icon="📞"),
         st.Page("pages/9_📅_Appointments.py", title="Appointments", icon="📅"),
     ],
