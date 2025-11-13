@@ -44,3 +44,7 @@ ansi2html>=1.9.0
 
 # HTTP Client (for web-backend API calls)
 httpx>=0.25.0
+
+# WebRTC for Cold Call Dialer
+streamlit-webrtc>=0.47.1
+aiortc>=1.6.0
