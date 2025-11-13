@@ -62,33 +62,75 @@ api_client = ColdCallAPIClient()
 # ====================
 # Helper Functions
 # ====================
-def render_webrtc_component(access_token: str):
-    """Render Twilio WebRTC component for browser audio."""
+def render_webrtc_component(access_token: str, conference_name: str):
+    """Render Twilio WebRTC component for browser audio.
+
+    Args:
+        access_token: Twilio access token for WebRTC authentication
+        conference_name: Conference SID/name to join
+    """
     html_code = f"""
     <div id="webrtc-container">
-        <script src="https://sdk.twilio.com/js/client/releases/1.14.0/twilio.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@twilio/voice-sdk@2.16.0/dist/twilio.min.js"></script>
         <script>
-            // Initialize Twilio Device
-            const device = new Twilio.Device('{access_token}');
+            // Wait for SDK to load
+            window.addEventListener('load', function() {{
+                try {{
+                    // Verify Twilio SDK is available
+                    if (typeof Twilio === 'undefined' || typeof Twilio.Device === 'undefined') {{
+                        throw new Error('Twilio Voice SDK not loaded');
+                    }}
 
-            device.on('ready', function() {{
-                console.log('Twilio Device Ready');
-                // Auto-connect to conference
-                const conn = device.connect();
-                console.log('Connecting to conference...');
-            }});
+                    console.log('Twilio Voice SDK loaded successfully');
 
-            device.on('connect', function(conn) {{
-                console.log('Connected to conference!');
-            }});
+                    // Initialize Twilio Device with Voice SDK 2.x
+                    const device = new Twilio.Device('{access_token}', {{
+                        logLevel: 1,
+                        codecPreferences: ['opus', 'pcmu'],
+                        enableImprovedSignalingErrorPrecision: true
+                    }});
 
-            device.on('disconnect', function(conn) {{
-                console.log('Disconnected from conference');
-            }});
+                    // Register the device
+                    device.register();
 
-            device.on('error', function(error) {{
-                console.error('Twilio Device Error:', error);
-                alert('WebRTC Error: ' + error.message);
+                    device.on('registered', function() {{
+                        console.log('Twilio Device Ready and Registered');
+                        // Auto-connect to conference with conference name parameter
+                        const call = device.connect({{
+                            params: {{
+                                conference_name: '{conference_name}'
+                            }}
+                        }});
+                        console.log('Connecting to conference: {conference_name}');
+                    }});
+
+                    device.on('connect', function(connection) {{
+                        console.log('Connected to conference!');
+                        console.log('Connection parameters:', connection.parameters);
+                    }});
+
+                    device.on('disconnect', function(connection) {{
+                        console.log('Disconnected from conference');
+                    }});
+
+                    device.on('error', function(error) {{
+                        console.error('Twilio Device Error:', {{
+                            code: error.code,
+                            message: error.message,
+                            twilioError: error
+                        }});
+                        alert('WebRTC Error: ' + error.message + ' (Code: ' + error.code + ')');
+                    }});
+
+                    device.on('tokenWillExpire', function() {{
+                        console.warn('Token will expire soon - should refresh');
+                        // TODO: Implement token refresh logic here
+                    }});
+
+                }} catch (error) {{
+                    console.error('Failed to initialize Twilio Device:', error);
+                    alert('Failed to load Twilio Voice SDK: ' + error.message);
+                }}
             }});
         </script>
         <div style="padding: 20px; background: #f0f0f0; border-radius: 8px; text-align: center;">
@@ -309,7 +351,10 @@ else:
             st.success("✅ Call connected! Browser audio active.")
 
             # Render WebRTC component
-            render_webrtc_component(st.session_state.current_call['access_token'])
+            render_webrtc_component(
+                st.session_state.current_call['access_token'],
+                st.session_state.current_call['conference_sid']
+            )
 
             # Call timer
             elapsed = (datetime.now() - call['start_time']).total_seconds()
