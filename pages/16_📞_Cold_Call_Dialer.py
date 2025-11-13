@@ -301,6 +301,9 @@ def render_realtime_call_status():
             participant_count = status_data.get('participant_count', 0)
             prev_count = st.session_state.get('previous_participant_count', 0)
 
+            # DEBUG: Log what we're reading from Redis
+            logger.info(f"[DEBUG FRONTEND] Conference: {conference_sid}, participant_count from Redis: {participant_count}, prev_count: {prev_count}, full_data_keys: {list(status_data.keys())}")
+
             # Detect state transitions
             if prev_count < 2 and participant_count >= 2:
                 st.session_state.call_state = 'connected'
