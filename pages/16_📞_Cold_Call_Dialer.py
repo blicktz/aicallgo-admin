@@ -75,6 +75,9 @@ if 'play_chime' not in st.session_state:
 if 'play_beep' not in st.session_state:
     st.session_state.play_beep = False
 
+if 'is_muted' not in st.session_state:
+    st.session_state.is_muted = False
+
 # Initialize API client
 api_client = ColdCallAPIClient()
 
@@ -85,12 +88,13 @@ logger = logging.getLogger(__name__)
 # ====================
 # Helper Functions
 # ====================
-def render_webrtc_component(access_token: str, conference_name: str):
+def render_webrtc_component(access_token: str, conference_name: str, client_id: str):
     """Render Twilio WebRTC component for browser audio.
 
     Args:
         access_token: Twilio access token for WebRTC authentication
         conference_name: Conference SID/name to join
+        client_id: Client identifier for participant labeling
     """
     html_code = f"""
     <div id="webrtc-container">
@@ -118,13 +122,14 @@ def render_webrtc_component(access_token: str, conference_name: str):
 
                     device.on('registered', function() {{
                         console.log('Twilio Device Ready and Registered');
-                        // Auto-connect to conference with conference name parameter
+                        // Auto-connect to conference with conference name and client ID
                         const call = device.connect({{
                             params: {{
-                                conference_name: '{conference_name}'
+                                conference_name: '{conference_name}',
+                                client_id: '{client_id}'
                             }}
                         }});
-                        console.log('Connecting to conference: {conference_name}');
+                        console.log('Connecting to conference: {conference_name} as {client_id}');
                     }});
 
                     device.on('connect', function(connection) {{
@@ -185,19 +190,19 @@ def render_audio_player(play_ringtone: bool = False, play_chime: bool = False, p
 
     html_code = f"""
     <div id="audio-player" style="display:none;">
-        <!-- Ringtone: Looping ring sound -->
+        <!-- Ringtone: Looping ring sound (non-preview version) -->
         <audio id="ringtone" loop>
-            <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
+            <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869.mp3" type="audio/mpeg">
         </audio>
 
-        <!-- Chime: Pleasant notification for callee connected (play once) -->
+        <!-- Chime: Pleasant notification for callee connected (play once, non-preview) -->
         <audio id="chime">
-            <source src="https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3" type="audio/mpeg">
+            <source src="https://assets.mixkit.co/active_storage/sfx/2354/2354.mp3" type="audio/mpeg">
         </audio>
 
-        <!-- Beep: Short beep for callee disconnected (play once) -->
+        <!-- Beep: Short beep for callee disconnected (play once, non-preview) -->
         <audio id="beep">
-            <source src="https://assets.mixkit.co/active_storage/sfx/2870/2870-preview.mp3" type="audio/mpeg">
+            <source src="https://assets.mixkit.co/active_storage/sfx/2870/2870.mp3" type="audio/mpeg">
         </audio>
 
         <script>
@@ -486,6 +491,7 @@ else:
                             'start_time': datetime.now(),
                         }
                         st.session_state.dialer_state = 'dialing'
+                        st.session_state.is_muted = False  # Reset mute state for new call
                         update_contact_status(st.session_state.contacts, idx, 'calling')
                         st.rerun()
 
@@ -586,7 +592,8 @@ else:
             # Render WebRTC component
             render_webrtc_component(
                 st.session_state.current_call['access_token'],
-                st.session_state.current_call['conference_sid']
+                st.session_state.current_call['conference_sid'],
+                st.session_state.current_call['client_id']
             )
 
             # Call timer
@@ -595,34 +602,40 @@ else:
             seconds = int(elapsed % 60)
             st.metric("Call Duration", f"{minutes:02d}:{seconds:02d}")
 
+            # Microphone status indicator
+            mic_status = "🔇 Muted" if st.session_state.is_muted else "🎤 Active"
+            mic_color = "red" if st.session_state.is_muted else "green"
+            st.markdown(f"**Microphone:** :{mic_color}[{mic_status}]")
+
             # Call controls
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3 = st.columns(3)
 
             with col1:
-                if st.button("🔇 Mute", use_container_width=True, key="mute_btn"):
+                # Single toggle button for mute/unmute
+                btn_label = "🔊 Unmute Mic" if st.session_state.is_muted else "🔇 Mute Mic"
+                btn_type = "secondary" if st.session_state.is_muted else "primary"
+
+                if st.button(btn_label, use_container_width=True, type=btn_type, key="toggle_mute_btn"):
                     try:
+                        # Toggle the mute state
+                        new_mute_state = not st.session_state.is_muted
+
                         api_client.mute_participant_sync(
                             conference_sid=st.session_state.current_call['conference_sid'],
                             participant_sid=st.session_state.current_call['participant_sid'],
-                            muted=True,
+                            muted=new_mute_state,
                         )
-                        st.success("Muted")
+
+                        # Update state only after successful API call
+                        st.session_state.is_muted = new_mute_state
+
+                        # Force rerun to sync button label with actual state
+                        st.rerun()
+
                     except Exception as e:
-                        st.error(f"Mute failed: {str(e)}")
+                        st.error(f"Mute toggle failed: {str(e)}")
 
             with col2:
-                if st.button("🔊 Unmute", use_container_width=True, key="unmute_btn"):
-                    try:
-                        api_client.mute_participant_sync(
-                            conference_sid=st.session_state.current_call['conference_sid'],
-                            participant_sid=st.session_state.current_call['participant_sid'],
-                            muted=False,
-                        )
-                        st.success("Unmuted")
-                    except Exception as e:
-                        st.error(f"Unmute failed: {str(e)}")
-
-            with col3:
                 if st.button("📴 End Call", use_container_width=True, type="primary", key="end_call_btn"):
                     try:
                         api_client.end_call_sync(
