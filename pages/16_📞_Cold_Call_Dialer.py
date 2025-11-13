@@ -60,6 +60,47 @@ if 'dialer_state' not in st.session_state:
 api_client = ColdCallAPIClient()
 
 # ====================
+# Helper Functions
+# ====================
+def render_webrtc_component(access_token: str):
+    """Render Twilio WebRTC component for browser audio."""
+    html_code = f"""
+    <div id="webrtc-container">
+        <script src="https://sdk.twilio.com/js/client/releases/1.14.0/twilio.min.js"></script>
+        <script>
+            // Initialize Twilio Device
+            const device = new Twilio.Device('{access_token}');
+
+            device.on('ready', function() {{
+                console.log('Twilio Device Ready');
+                // Auto-connect to conference
+                const conn = device.connect();
+                console.log('Connecting to conference...');
+            }});
+
+            device.on('connect', function(conn) {{
+                console.log('Connected to conference!');
+            }});
+
+            device.on('disconnect', function(conn) {{
+                console.log('Disconnected from conference');
+            }});
+
+            device.on('error', function(error) {{
+                console.error('Twilio Device Error:', error);
+                alert('WebRTC Error: ' + error.message);
+            }});
+        </script>
+        <div style="padding: 20px; background: #f0f0f0; border-radius: 8px; text-align: center;">
+            <p style="margin: 0; color: #333;">🎧 Browser audio active</p>
+            <p style="margin: 5px 0 0 0; font-size: 0.9em; color: #666;">Speak into your microphone</p>
+        </div>
+    </div>
+    """
+
+    st.components.v1.html(html_code, height=150)
+
+# ====================
 # Header
 # ====================
 st.title("📞 Cold Call Dialer")
@@ -431,46 +472,6 @@ else:
     # Show dialer modal if there's an active call
     if st.session_state.current_call and st.session_state.dialer_state != 'idle':
         show_dialer()
-
-
-def render_webrtc_component(access_token: str):
-    """Render Twilio WebRTC component for browser audio."""
-    html_code = f"""
-    <div id="webrtc-container">
-        <script src="https://sdk.twilio.com/js/client/releases/1.14.0/twilio.min.js"></script>
-        <script>
-            // Initialize Twilio Device
-            const device = new Twilio.Device('{access_token}');
-
-            device.on('ready', function() {{
-                console.log('Twilio Device Ready');
-                // Auto-connect to conference
-                const conn = device.connect();
-                console.log('Connecting to conference...');
-            }});
-
-            device.on('connect', function(conn) {{
-                console.log('Connected to conference!');
-            }});
-
-            device.on('disconnect', function(conn) {{
-                console.log('Disconnected from conference');
-            }});
-
-            device.on('error', function(error) {{
-                console.error('Twilio Device Error:', error);
-                alert('WebRTC Error: ' + error.message);
-            }});
-        </script>
-        <div style="padding: 20px; background: #f0f0f0; border-radius: 8px; text-align: center;">
-            <p style="margin: 0; color: #333;">🎧 Browser audio active</p>
-            <p style="margin: 5px 0 0 0; font-size: 0.9em; color: #666;">Speak into your microphone</p>
-        </div>
-    </div>
-    """
-
-    st.components.v1.html(html_code, height=150)
-
 
 # ====================
 # Call History Section

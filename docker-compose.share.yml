@@ -40,6 +40,10 @@ services:
       # Web Backend API Configuration
       - WEB_BACKEND_URL=${WEB_BACKEND_URL:-http://aicallgo_app:8000}
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+
+      # Cold Call Dialer Configuration
+      - OUTCALL_AGENT_INTERNAL_URL=${OUTCALL_AGENT_INTERNAL_URL:-http://outcall_agent_backend:8000}
+      - ENABLE_COLD_CALL_DIALER=${ENABLE_COLD_CALL_DIALER:-true}
     volumes:
       # Live reload for application code
       - ./streamlit_app.py:/app/streamlit_app.py
