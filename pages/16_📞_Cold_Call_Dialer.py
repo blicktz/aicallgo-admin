@@ -190,14 +190,14 @@ def render_audio_player(play_ringtone: bool = False, play_chime: bool = False, p
             <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
         </audio>
 
-        <!-- Chime: Pleasant notification for callee connected -->
+        <!-- Chime: Pleasant notification for callee connected (play once) -->
         <audio id="chime">
             <source src="https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3" type="audio/mpeg">
         </audio>
 
-        <!-- Beep: Short beep for callee disconnected -->
+        <!-- Beep: Short beep for callee disconnected (play once) -->
         <audio id="beep">
-            <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
+            <source src="https://assets.mixkit.co/active_storage/sfx/2870/2870-preview.mp3" type="audio/mpeg">
         </audio>
 
         <script>
