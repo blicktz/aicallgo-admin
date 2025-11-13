@@ -56,8 +56,33 @@ if 'call_history' not in st.session_state:
 if 'dialer_state' not in st.session_state:
     st.session_state.dialer_state = 'idle'  # idle, dialing, connected, ended
 
+if 'polling_active' not in st.session_state:
+    st.session_state.polling_active = False
+
+if 'last_poll_time' not in st.session_state:
+    st.session_state.last_poll_time = 0
+
+if 'previous_participant_count' not in st.session_state:
+    st.session_state.previous_participant_count = 0
+
+if 'call_state' not in st.session_state:
+    st.session_state.call_state = 'idle'  # idle, dialing, ringing, connected, disconnected
+
+if 'play_ringtone' not in st.session_state:
+    st.session_state.play_ringtone = False
+
+if 'play_chime' not in st.session_state:
+    st.session_state.play_chime = False
+
+if 'play_beep' not in st.session_state:
+    st.session_state.play_beep = False
+
 # Initialize API client
 api_client = ColdCallAPIClient()
+
+# Import logger
+import logging
+logger = logging.getLogger(__name__)
 
 # ====================
 # Helper Functions
@@ -141,6 +166,110 @@ def render_webrtc_component(access_token: str, conference_name: str):
     """
 
     st.components.v1.html(html_code, height=150)
+
+
+def render_audio_player(play_ringtone: bool = False, play_chime: bool = False, play_beep: bool = False):
+    """Render audio player with sound effects.
+
+    Args:
+        play_ringtone: Play ringtone sound (looping while dialing)
+        play_chime: Play chime sound (when callee connects)
+        play_beep: Play beep sound (when callee disconnects)
+    """
+    # Using simple data URIs for audio to avoid external dependencies
+    # Ringtone: 440Hz tone (A4 note) repeating
+    # Chime: Pleasant ascending tones (C-E-G major chord)
+    # Beep: Short 880Hz tone (A5 note)
+
+    ringtone_cmd = "document.getElementById('ringtone').play();" if play_ringtone else "document.getElementById('ringtone').pause();"
+    chime_cmd = "document.getElementById('chime').play();" if play_chime else ""
+    beep_cmd = "document.getElementById('beep').play();" if play_beep else ""
+
+    html_code = f"""
+    <div id="audio-player" style="display:none;">
+        <!-- Ringtone: Looping ring sound -->
+        <audio id="ringtone" loop>
+            <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
+        </audio>
+
+        <!-- Chime: Pleasant notification for callee connected -->
+        <audio id="chime">
+            <source src="https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3" type="audio/mpeg">
+        </audio>
+
+        <!-- Beep: Short beep for callee disconnected -->
+        <audio id="beep">
+            <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
+        </audio>
+
+        <script>
+            // Execute audio commands
+            {ringtone_cmd}
+            {chime_cmd}
+            {beep_cmd}
+        </script>
+    </div>
+    """
+
+    st.components.v1.html(html_code, height=0)
+
+
+def fetch_call_status() -> Optional[Dict[str, Any]]:
+    """Fetch call status and detect state transitions.
+
+    Returns:
+        Status data dict or None if fetch fails
+    """
+    if not st.session_state.current_call:
+        return None
+
+    # Initialize error counter if not exists
+    if 'status_fetch_errors' not in st.session_state:
+        st.session_state.status_fetch_errors = 0
+
+    try:
+        conf_sid = st.session_state.current_call['conference_sid']
+        status_data = api_client.get_status_sync(conference_sid=conf_sid)
+
+        # Reset error counter on success
+        st.session_state.status_fetch_errors = 0
+
+        # Detect state transitions
+        participant_count = status_data.get('participant_count', 0)
+        prev_count = st.session_state.previous_participant_count
+
+        # Detect callee joined (participant count increased to 2+)
+        if prev_count < 2 and participant_count >= 2:
+            st.session_state.call_state = 'connected'
+            st.session_state.play_chime = True  # Trigger chime sound
+            logger.info(f"[STATE TRANSITION] Callee connected! Participant count: {participant_count}")
+
+        # Detect callee left (participant count decreased)
+        elif prev_count >= 2 and participant_count < 2:
+            st.session_state.call_state = 'disconnected'
+            st.session_state.play_beep = True  # Trigger beep sound
+            logger.info(f"[STATE TRANSITION] Callee disconnected! Participant count: {participant_count}")
+
+        # Detect dialing/ringing (1 participant - just you)
+        elif participant_count == 1:
+            if st.session_state.call_state == 'idle':
+                st.session_state.call_state = 'dialing'
+
+        st.session_state.previous_participant_count = participant_count
+
+        return status_data
+
+    except Exception as e:
+        st.session_state.status_fetch_errors += 1
+        logger.error(f"[STATUS FETCH ERROR] Attempt {st.session_state.status_fetch_errors}: {str(e)}", exc_info=True)
+
+        # Stop polling after 3 consecutive errors
+        if st.session_state.status_fetch_errors >= 3:
+            logger.error("[STATUS POLLING] Too many errors, stopping auto-polling")
+            st.session_state.polling_active = False
+
+        return None
+
 
 # ====================
 # Header
@@ -273,6 +402,28 @@ else:
         call = st.session_state.current_call
         contact = call['contact']
 
+        # Auto-polling logic (1-second intervals)
+        current_time = time.time()
+        if st.session_state.dialer_state == 'connected':
+            # Start polling when connected
+            if not st.session_state.polling_active:
+                st.session_state.polling_active = True
+                st.session_state.call_state = 'dialing'  # Initial state
+                logger.info("[POLLING] Started auto-polling for call status")
+
+            # Check if 1 second has passed since last poll
+            if current_time - st.session_state.last_poll_time >= 1.0:
+                st.session_state.last_poll_time = current_time
+                logger.debug(f"[POLLING] Triggering status fetch (interval: {current_time - st.session_state.last_poll_time:.2f}s)")
+                # The status will be fetched below in the display section
+                time.sleep(0.1)  # Small delay before rerun
+                st.rerun()  # Trigger rerun to fetch new status
+        else:
+            # Stop polling when not connected
+            if st.session_state.polling_active:
+                st.session_state.polling_active = False
+                logger.info("[POLLING] Stopped auto-polling")
+
         # Display contact info
         st.markdown(f"### Calling: {contact['name']}")
         st.markdown(f"**Company:** {contact['company']}")
@@ -390,15 +541,6 @@ else:
                         st.error(f"Unmute failed: {str(e)}")
 
             with col3:
-                # Initialize show_call_info in session state
-                if 'show_call_info' not in st.session_state:
-                    st.session_state.show_call_info = False
-
-                if st.button("ℹ️ Call Info", use_container_width=True, key="info_btn"):
-                    st.session_state.show_call_info = not st.session_state.show_call_info
-                    st.rerun()
-
-            with col4:
                 if st.button("📴 End Call", use_container_width=True, type="primary", key="end_call_btn"):
                     try:
                         api_client.end_call_sync(
@@ -409,49 +551,95 @@ else:
                     except Exception as e:
                         st.error(f"End call failed: {str(e)}")
 
-            # Display call info if toggled on
-            if st.session_state.get('show_call_info', False):
-                st.markdown("---")
-                with st.expander("📊 Real-time Call Status", expanded=True):
-                    try:
-                        # Fetch call status
-                        status_data = api_client.get_status_sync(
-                            conference_sid=st.session_state.current_call['conference_sid']
+            # Always-visible real-time status panel
+            st.markdown("---")
+            st.markdown("### 📊 Call Status")
+
+            # Fetch current status
+            status_data = fetch_call_status()
+
+            # Display error banner if there are fetch errors
+            error_count = st.session_state.get('status_fetch_errors', 0)
+            if error_count > 0:
+                if error_count >= 3:
+                    st.error("⚠️ Status updates stopped due to connection errors. Call may still be active.")
+                else:
+                    st.warning(f"⚠️ Temporary connection issue ({error_count}/3 errors). Retrying...")
+
+            if status_data:
+                # Connection state display with color coding
+                call_state = st.session_state.call_state
+                state_config = {
+                    'idle': {'emoji': '⚪', 'label': 'Idle', 'color': 'gray'},
+                    'dialing': {'emoji': '📞', 'label': 'Dialing...', 'color': 'orange'},
+                    'ringing': {'emoji': '📳', 'label': 'Ringing...', 'color': 'blue'},
+                    'connected': {'emoji': '✅', 'label': 'Callee Connected', 'color': 'green'},
+                    'disconnected': {'emoji': '📴', 'label': 'Callee Disconnected', 'color': 'red'},
+                }
+                config = state_config.get(call_state, state_config['idle'])
+
+                # Display connection status prominently
+                st.markdown(f"### {config['emoji']} {config['label']}")
+
+                # Display status metrics
+                col_a, col_b, col_c = st.columns(3)
+                with col_a:
+                    st.metric("Conference Status", status_data['status'].upper())
+                with col_b:
+                    st.metric("Participants", status_data['participant_count'])
+                with col_c:
+                    duration_mins = status_data['duration'] // 60
+                    duration_secs = status_data['duration'] % 60
+                    st.metric("Duration", f"{duration_mins}m {duration_secs}s")
+
+                # Display called number info
+                st.markdown("**📱 Called Number:**")
+                st.code(call['formatted_phone'])
+
+                # Display participants with detailed info
+                if status_data.get('participants'):
+                    st.markdown("**👥 Conference Participants:**")
+                    for idx, participant in enumerate(status_data['participants'], 1):
+                        mute_icon = "🔇" if participant['muted'] else "🔊"
+                        hold_icon = "⏸️" if participant['hold'] else ""
+                        call_type = "📱 Phone" if participant['call_sid'] else "💻 WebRTC"
+
+                        # Calculate participant duration
+                        if participant.get('start_time'):
+                            participant_start = datetime.fromisoformat(participant['start_time'].replace('Z', '+00:00'))
+                            participant_duration = (datetime.now(participant_start.tzinfo) - participant_start).total_seconds()
+                            part_mins = int(participant_duration // 60)
+                            part_secs = int(participant_duration % 60)
+                            duration_str = f"({part_mins}:{part_secs:02d})"
+                        else:
+                            duration_str = ""
+
+                        st.markdown(
+                            f"{idx}. {call_type} - {mute_icon} {hold_icon} {duration_str}"
                         )
 
-                        # Display status overview
-                        col_a, col_b, col_c = st.columns(3)
-                        with col_a:
-                            st.metric("Status", status_data['status'].upper())
-                        with col_b:
-                            st.metric("Participants", status_data['participant_count'])
-                        with col_c:
-                            duration_mins = status_data['duration'] // 60
-                            duration_secs = status_data['duration'] % 60
-                            st.metric("Conference Duration", f"{duration_mins}m {duration_secs}s")
+                st.caption("🔄 Auto-updating every 1 second")
 
-                        # Display participants
-                        if status_data.get('participants'):
-                            st.markdown("**Participants:**")
-                            for idx, participant in enumerate(status_data['participants'], 1):
-                                mute_icon = "🔇" if participant['muted'] else "🔊"
-                                hold_icon = "⏸️" if participant['hold'] else ""
-                                call_type = "📱 Phone" if participant['call_sid'] else "💻 WebRTC"
+            else:
+                st.warning("Unable to fetch call status")
 
-                                st.markdown(
-                                    f"{idx}. {call_type} - {mute_icon} {hold_icon} "
-                                    f"(SID: `{participant['participant_sid'][:8]}...`)"
-                                )
+            # Audio feedback based on call state
+            play_ringtone = st.session_state.call_state in ['dialing', 'ringing']
+            play_chime = st.session_state.get('play_chime', False)
+            play_beep = st.session_state.get('play_beep', False)
 
-                        # Auto-refresh button
-                        if st.button("🔄 Refresh Status", key="refresh_status"):
-                            st.rerun()
+            # Render audio player
+            render_audio_player(
+                play_ringtone=play_ringtone,
+                play_chime=play_chime,
+                play_beep=play_beep
+            )
 
-                        st.caption("ℹ️ Status updates every time you click Refresh")
-
-                    except Exception as e:
-                        st.error(f"Failed to fetch call status: {str(e)}")
-                        st.caption("Try clicking Refresh Status button")
+            # Reset one-shot audio triggers after playing
+            if st.session_state.get('play_chime'):
+                st.session_state.play_chime = False
+            if st.session_state.get('play_beep'):
+                st.session_state.play_beep = False
 
         # Post-call logging
         if st.session_state.dialer_state == 'ended':

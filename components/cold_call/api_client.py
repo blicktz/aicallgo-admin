@@ -193,18 +193,27 @@ class ColdCallAPIClient:
         """
         url = f"{self.base_url}/aicallgo/api/v1/cold-call/status/{conference_sid}"
 
-        logger.debug(f"Getting status for conference {conference_sid}")
+        logger.info(f"[STATUS REQUEST] URL: {url}")
+        logger.info(f"[STATUS REQUEST] Conference SID: {conference_sid}")
+        logger.info(f"[STATUS REQUEST] Base URL: {self.base_url}")
+        logger.info(f"[STATUS REQUEST] API Key present: {bool(self.api_key)}")
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.get(
-                url,
-                headers=self._get_headers(),
-            )
-            response.raise_for_status()
+            try:
+                response = await client.get(
+                    url,
+                    headers=self._get_headers(),
+                )
+                logger.info(f"[STATUS RESPONSE] Status Code: {response.status_code}")
+                response.raise_for_status()
 
-            data = response.json()
-            logger.debug(f"Conference status: status={data.get('status')}, participants={data.get('participant_count')}")
-            return data
+                data = response.json()
+                logger.info(f"[STATUS SUCCESS] Conference status: status={data.get('status')}, participants={data.get('participant_count')}")
+                return data
+            except httpx.HTTPError as e:
+                logger.error(f"[STATUS ERROR] HTTP Error: {e}")
+                logger.error(f"[STATUS ERROR] Response: {getattr(e, 'response', None)}")
+                raise
 
     def initiate_call_sync(self, to_phone: str, from_phone: Optional[str] = None,
                           provider: str = 'twilio') -> Dict[str, Any]:
