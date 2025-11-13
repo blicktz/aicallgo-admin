@@ -277,7 +277,7 @@ else:
             st.metric("Call Duration", f"{minutes:02d}:{seconds:02d}")
 
             # Call controls
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
 
             with col1:
                 if st.button("🔇 Mute", use_container_width=True, key="mute_btn"):
@@ -304,6 +304,15 @@ else:
                         st.error(f"Unmute failed: {str(e)}")
 
             with col3:
+                # Initialize show_call_info in session state
+                if 'show_call_info' not in st.session_state:
+                    st.session_state.show_call_info = False
+
+                if st.button("ℹ️ Call Info", use_container_width=True, key="info_btn"):
+                    st.session_state.show_call_info = not st.session_state.show_call_info
+                    st.rerun()
+
+            with col4:
                 if st.button("📴 End Call", use_container_width=True, type="primary", key="end_call_btn"):
                     try:
                         api_client.end_call_sync(
@@ -313,6 +322,50 @@ else:
                         st.rerun()
                     except Exception as e:
                         st.error(f"End call failed: {str(e)}")
+
+            # Display call info if toggled on
+            if st.session_state.get('show_call_info', False):
+                st.markdown("---")
+                with st.expander("📊 Real-time Call Status", expanded=True):
+                    try:
+                        # Fetch call status
+                        status_data = api_client.get_status_sync(
+                            conference_sid=st.session_state.current_call['conference_sid']
+                        )
+
+                        # Display status overview
+                        col_a, col_b, col_c = st.columns(3)
+                        with col_a:
+                            st.metric("Status", status_data['status'].upper())
+                        with col_b:
+                            st.metric("Participants", status_data['participant_count'])
+                        with col_c:
+                            duration_mins = status_data['duration'] // 60
+                            duration_secs = status_data['duration'] % 60
+                            st.metric("Conference Duration", f"{duration_mins}m {duration_secs}s")
+
+                        # Display participants
+                        if status_data.get('participants'):
+                            st.markdown("**Participants:**")
+                            for idx, participant in enumerate(status_data['participants'], 1):
+                                mute_icon = "🔇" if participant['muted'] else "🔊"
+                                hold_icon = "⏸️" if participant['hold'] else ""
+                                call_type = "📱 Phone" if participant['call_sid'] else "💻 WebRTC"
+
+                                st.markdown(
+                                    f"{idx}. {call_type} - {mute_icon} {hold_icon} "
+                                    f"(SID: `{participant['participant_sid'][:8]}...`)"
+                                )
+
+                        # Auto-refresh button
+                        if st.button("🔄 Refresh Status", key="refresh_status"):
+                            st.rerun()
+
+                        st.caption("ℹ️ Status updates every time you click Refresh")
+
+                    except Exception as e:
+                        st.error(f"Failed to fetch call status: {str(e)}")
+                        st.caption("Try clicking Refresh Status button")
 
         # Post-call logging
         if st.session_state.dialer_state == 'ended':
