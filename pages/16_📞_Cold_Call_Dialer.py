@@ -5,6 +5,7 @@ Browser-based cold calling with WebRTC integration
 This page is NOT listed in the main navigation sidebar.
 Access via direct URL: /16_📞_Cold_Call_Dialer
 """
+import asyncio
 import streamlit as st
 import uuid
 from datetime import datetime
@@ -23,6 +24,9 @@ from components.cold_call.csv_parser import (
 )
 from components.cold_call.phone_validator import validate_and_format
 from components.cold_call.api_client import ColdCallAPIClient
+
+# Import Redis service for real-time status
+from services.redis_service import get_redis_service
 
 # Page configuration
 st.set_page_config(
@@ -55,12 +59,6 @@ if 'call_history' not in st.session_state:
 
 if 'dialer_state' not in st.session_state:
     st.session_state.dialer_state = 'idle'  # idle, dialing, connected, ended
-
-if 'polling_active' not in st.session_state:
-    st.session_state.polling_active = False
-
-if 'last_poll_time' not in st.session_state:
-    st.session_state.last_poll_time = 0
 
 if 'previous_participant_count' not in st.session_state:
     st.session_state.previous_participant_count = 0
@@ -271,6 +269,106 @@ def fetch_call_status() -> Optional[Dict[str, Any]]:
         return None
 
 
+@st.fragment(run_every="2s")
+def render_realtime_call_status():
+    """Auto-refreshing fragment that displays real-time call status from Redis.
+
+    This fragment auto-refreshes every 2 seconds to show updated call status
+    without requiring manual polling or full page reruns.
+    """
+    if not st.session_state.get('current_call'):
+        return
+
+    conference_sid = st.session_state.current_call.get('conference_sid')
+    if not conference_sid:
+        return
+
+    try:
+        # Get Redis service
+        redis_service = get_redis_service()
+
+        # Fetch status from Redis (single source of truth)
+        # Uses dedicated synchronous client for reliable reads
+        status_data = redis_service.get_cold_call_status_sync(conference_sid)
+
+        if status_data:
+            # Update state transitions
+            participant_count = status_data.get('participant_count', 0)
+            prev_count = st.session_state.get('previous_participant_count', 0)
+
+            # Detect state transitions
+            if prev_count < 2 and participant_count >= 2:
+                st.session_state.call_state = 'connected'
+                st.session_state.play_chime = True
+                logger.info(f"[REALTIME STATUS] Callee connected! Participants: {participant_count}")
+            elif prev_count >= 2 and participant_count < 2:
+                st.session_state.call_state = 'disconnected'
+                st.session_state.play_beep = True
+                logger.info(f"[REALTIME STATUS] Callee disconnected! Participants: {participant_count}")
+            elif participant_count == 1 and st.session_state.call_state == 'idle':
+                st.session_state.call_state = 'dialing'
+
+            st.session_state.previous_participant_count = participant_count
+
+            # Display status UI
+            st.markdown("### 📊 Real-Time Call Status")
+
+            # Connection state display
+            call_state = st.session_state.get('call_state', 'idle')
+            state_config = {
+                'idle': {'emoji': '⚪', 'label': 'Idle', 'color': 'gray'},
+                'dialing': {'emoji': '📞', 'label': 'Dialing...', 'color': 'orange'},
+                'ringing': {'emoji': '📳', 'label': 'Ringing...', 'color': 'blue'},
+                'connected': {'emoji': '✅', 'label': 'Callee Connected', 'color': 'green'},
+                'disconnected': {'emoji': '📴', 'label': 'Callee Disconnected', 'color': 'red'},
+            }
+            config = state_config.get(call_state, state_config['idle'])
+
+            # Display connection status
+            st.markdown(f"#### {config['emoji']} {config['label']}")
+
+            # Display metrics in columns
+            col_a, col_b, col_c = st.columns(3)
+            with col_a:
+                st.metric("Conference Status", status_data.get('status', 'unknown').upper())
+            with col_b:
+                st.metric("Participants", participant_count)
+            with col_c:
+                # Calculate duration from timestamps if available
+                if 'created_at' in status_data:
+                    try:
+                        from datetime import datetime
+                        created = datetime.fromisoformat(status_data['created_at'].replace('Z', '+00:00'))
+                        now = datetime.utcnow()
+                        duration_secs = int((now - created).total_seconds())
+                        duration_mins = duration_secs // 60
+                        duration_secs = duration_secs % 60
+                        st.metric("Duration", f"{duration_mins}m {duration_secs}s")
+                    except:
+                        st.metric("Duration", "N/A")
+                else:
+                    st.metric("Duration", "N/A")
+
+            # Display last update time
+            if 'updated_at' in status_data:
+                st.caption(f"Last updated: {status_data['updated_at']}")
+
+            # Display recent events (if available)
+            if 'events' in status_data and status_data['events']:
+                with st.expander("📜 Recent Events", expanded=False):
+                    for event in reversed(status_data['events'][-5:]):  # Show last 5 events
+                        event_type = event.get('type', 'unknown')
+                        timestamp = event.get('timestamp', '')
+                        st.text(f"• {event_type} at {timestamp}")
+        else:
+            # No data in Redis yet - show waiting message
+            st.info("⏳ Waiting for call status... (Connecting to Twilio)")
+
+    except Exception as e:
+        logger.error(f"[REALTIME STATUS ERROR] {str(e)}", exc_info=True)
+        st.error(f"Status update error: {str(e)}")
+
+
 # ====================
 # Header
 # ====================
@@ -366,9 +464,11 @@ else:
                 st.text(contact['call_outcome'])
 
         with col6:
-            # Dial button
-            if contact['status'] == 'pending' and st.session_state.dialer_state == 'idle':
-                if st.button("📞 Dial", key=f"dial_{idx}", use_container_width=True):
+            # Dial button (allow redialing completed/failed contacts)
+            if contact['status'] in ['pending', 'completed', 'failed'] and st.session_state.dialer_state == 'idle':
+                # Change button label based on status
+                button_label = "📞 Dial" if contact['status'] == 'pending' else "🔁 Redial"
+                if st.button(button_label, key=f"dial_{idx}", use_container_width=True):
                     # Validate and format phone number
                     is_valid, formatted_phone, error = validate_and_format(contact['phone'])
 
@@ -402,27 +502,9 @@ else:
         call = st.session_state.current_call
         contact = call['contact']
 
-        # Auto-polling logic (1-second intervals)
-        current_time = time.time()
-        if st.session_state.dialer_state == 'connected':
-            # Start polling when connected
-            if not st.session_state.polling_active:
-                st.session_state.polling_active = True
-                st.session_state.call_state = 'dialing'  # Initial state
-                logger.info("[POLLING] Started auto-polling for call status")
-
-            # Check if 1 second has passed since last poll
-            if current_time - st.session_state.last_poll_time >= 1.0:
-                st.session_state.last_poll_time = current_time
-                logger.debug(f"[POLLING] Triggering status fetch (interval: {current_time - st.session_state.last_poll_time:.2f}s)")
-                # The status will be fetched below in the display section
-                time.sleep(0.1)  # Small delay before rerun
-                st.rerun()  # Trigger rerun to fetch new status
-        else:
-            # Stop polling when not connected
-            if st.session_state.polling_active:
-                st.session_state.polling_active = False
-                logger.info("[POLLING] Stopped auto-polling")
+        # Initialize call state if not set
+        if st.session_state.dialer_state == 'connected' and 'call_state' not in st.session_state:
+            st.session_state.call_state = 'dialing'  # Initial state
 
         # Display contact info
         st.markdown(f"### Calling: {contact['name']}")
@@ -553,75 +635,14 @@ else:
 
             # Always-visible real-time status panel
             st.markdown("---")
-            st.markdown("### 📊 Call Status")
 
-            # Fetch current status
-            status_data = fetch_call_status()
+            # Use the new fragment-based real-time status display
+            # This auto-refreshes every 2 seconds without manual polling
+            render_realtime_call_status()
 
-            # Display error banner if there are fetch errors
-            error_count = st.session_state.get('status_fetch_errors', 0)
-            if error_count > 0:
-                if error_count >= 3:
-                    st.error("⚠️ Status updates stopped due to connection errors. Call may still be active.")
-                else:
-                    st.warning(f"⚠️ Temporary connection issue ({error_count}/3 errors). Retrying...")
-
-            if status_data:
-                # Connection state display with color coding
-                call_state = st.session_state.call_state
-                state_config = {
-                    'idle': {'emoji': '⚪', 'label': 'Idle', 'color': 'gray'},
-                    'dialing': {'emoji': '📞', 'label': 'Dialing...', 'color': 'orange'},
-                    'ringing': {'emoji': '📳', 'label': 'Ringing...', 'color': 'blue'},
-                    'connected': {'emoji': '✅', 'label': 'Callee Connected', 'color': 'green'},
-                    'disconnected': {'emoji': '📴', 'label': 'Callee Disconnected', 'color': 'red'},
-                }
-                config = state_config.get(call_state, state_config['idle'])
-
-                # Display connection status prominently
-                st.markdown(f"### {config['emoji']} {config['label']}")
-
-                # Display status metrics
-                col_a, col_b, col_c = st.columns(3)
-                with col_a:
-                    st.metric("Conference Status", status_data['status'].upper())
-                with col_b:
-                    st.metric("Participants", status_data['participant_count'])
-                with col_c:
-                    duration_mins = status_data['duration'] // 60
-                    duration_secs = status_data['duration'] % 60
-                    st.metric("Duration", f"{duration_mins}m {duration_secs}s")
-
-                # Display called number info
-                st.markdown("**📱 Called Number:**")
-                st.code(call['formatted_phone'])
-
-                # Display participants with detailed info
-                if status_data.get('participants'):
-                    st.markdown("**👥 Conference Participants:**")
-                    for idx, participant in enumerate(status_data['participants'], 1):
-                        mute_icon = "🔇" if participant['muted'] else "🔊"
-                        hold_icon = "⏸️" if participant['hold'] else ""
-                        call_type = "📱 Phone" if participant['call_sid'] else "💻 WebRTC"
-
-                        # Calculate participant duration
-                        if participant.get('start_time'):
-                            participant_start = datetime.fromisoformat(participant['start_time'].replace('Z', '+00:00'))
-                            participant_duration = (datetime.now(participant_start.tzinfo) - participant_start).total_seconds()
-                            part_mins = int(participant_duration // 60)
-                            part_secs = int(participant_duration % 60)
-                            duration_str = f"({part_mins}:{part_secs:02d})"
-                        else:
-                            duration_str = ""
-
-                        st.markdown(
-                            f"{idx}. {call_type} - {mute_icon} {hold_icon} {duration_str}"
-                        )
-
-                st.caption("🔄 Auto-updating every 1 second")
-
-            else:
-                st.warning("Unable to fetch call status")
+            # Display called number info
+            st.markdown("**📱 Called Number:**")
+            st.code(call['formatted_phone'])
 
             # Audio feedback based on call state
             play_ringtone = st.session_state.call_state in ['dialing', 'ringing']
