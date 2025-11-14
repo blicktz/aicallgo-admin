@@ -380,7 +380,7 @@ class RedisService:
             if self.redis_sync_client is None:
                 if self._sync_connection_pool is None:
                     self._sync_connection_pool = redis.ConnectionPool.from_url(
-                        settings.REDIS_URL,
+                        settings.COLD_CALL_REDIS_URL,
                         decode_responses=True,
                         max_connections=10,
                     )

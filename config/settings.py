@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://:aicallgo_redis_password@aicallgo_redis:6379/0"
     ENTITLEMENT_CACHE_KEY_PREFIX: str = "entitlements"
 
+    # Cold Call Redis (shared database with outcall-agent - database 5)
+    COLD_CALL_REDIS_URL: str = "redis://:aicallgo_redis_password@aicallgo_redis:6379/5"
+
     # Redis Channels (matching web-backend call logging system)
     REDIS_CHANNEL_CALL_LOGS: str = "call_logs"
     REDIS_CHANNEL_HEARTBEAT: str = "call_heartbeat"
