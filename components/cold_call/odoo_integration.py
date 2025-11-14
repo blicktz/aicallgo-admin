@@ -187,7 +187,13 @@ class OdooIntegration:
                 fields=[
                     'id', 'name', 'phone', 'mobile',
                     'company_name', 'function', 'x_cold_call_status',
-                    'email', 'city', 'country_id'
+                    'email', 'city', 'country_id', 'street', 'state_id',
+                    # Custom fields
+                    'x_phone_carrier_type',
+                    'x_outbound_status_IVR', 'x_outbound_status_live',
+                    'x_outbound_status_no_answer', 'x_outbound_status_voicemail',
+                    'x_google_rating', 'x_google_review_count',
+                    'x_is_julya_icp', 'x_is_valid_lead'
                 ],
                 limit=page_size,
                 offset=offset,
@@ -212,6 +218,21 @@ class OdooIntegration:
                         current_status_value, current_status_value
                     )
 
+                # Format boolean fields as checkmarks
+                def format_boolean(value):
+                    if value is True:
+                        return '✓'
+                    elif value is False:
+                        return '✗'
+                    else:
+                        return '-'
+
+                # Format numeric fields
+                def format_number(value, default=0):
+                    if value is None or value == False:
+                        return default
+                    return int(value) if isinstance(value, (int, float)) else default
+
                 formatted_contacts.append({
                     'odoo_id': c['id'],
                     'name': c.get('name', ''),
@@ -224,7 +245,20 @@ class OdooIntegration:
                     'status': 'pending',
                     'notes': '',
                     'call_outcome': '',
-                    'current_odoo_status': current_status_name
+                    'current_odoo_status': current_status_name,
+                    # Address fields
+                    'street': c.get('street', ''),
+                    'state': c.get('state_id', [None, ''])[1] if c.get('state_id') else '',
+                    # Custom fields
+                    'carrier_type': c.get('x_phone_carrier_type', ''),
+                    'is_valid_lead': format_boolean(c.get('x_is_valid_lead')),
+                    'is_julya_icp': format_boolean(c.get('x_is_julya_icp')),
+                    'google_rating': c.get('x_google_rating', 0),
+                    'google_review_count': format_number(c.get('x_google_review_count')),
+                    'outbound_ivr': format_number(c.get('x_outbound_status_IVR')),
+                    'outbound_live': format_number(c.get('x_outbound_status_live')),
+                    'outbound_no_answer': format_number(c.get('x_outbound_status_no_answer')),
+                    'outbound_voicemail': format_number(c.get('x_outbound_status_voicemail'))
                 })
 
             logger.info(

@@ -189,14 +189,13 @@ def render_webrtc_component(access_token: str, conference_name: str, client_id: 
                 }}
             }});
         </script>
-        <div style="padding: 20px; background: #f0f0f0; border-radius: 8px; text-align: center;">
-            <p style="margin: 0; color: #333;">🎧 Browser audio active</p>
-            <p style="margin: 5px 0 0 0; font-size: 0.9em; color: #666;">Speak into your microphone</p>
+        <div style="padding: 5px; text-align: center; font-size: 0.8em; color: #666;">
+            🎧 Audio active
         </div>
     </div>
     """
 
-    st.components.v1.html(html_code, height=150)
+    st.components.v1.html(html_code, height=40)
 
 
 def render_audio_player(play_ringtone: bool = False, play_chime: bool = False, play_beep: bool = False):
@@ -346,31 +345,31 @@ def render_realtime_call_status():
 
             st.session_state.previous_participant_count = participant_count
 
-            # Display status UI
-            st.markdown("### 📊 Real-Time Call Status")
-
-            # Connection state display
+            # Compact status bar (single row with all key info)
             call_state = st.session_state.get('call_state', 'idle')
             state_config = {
-                'idle': {'emoji': '⚪', 'label': 'Idle', 'color': 'gray'},
-                'dialing': {'emoji': '📞', 'label': 'Dialing...', 'color': 'orange'},
-                'ringing': {'emoji': '📳', 'label': 'Ringing...', 'color': 'blue'},
-                'connected': {'emoji': '✅', 'label': 'Callee Connected', 'color': 'green'},
-                'disconnected': {'emoji': '📴', 'label': 'Callee Disconnected', 'color': 'red'},
+                'idle': {'emoji': '⚪', 'label': 'Idle'},
+                'dialing': {'emoji': '📞', 'label': 'Dialing...'},
+                'ringing': {'emoji': '📳', 'label': 'Ringing...'},
+                'connected': {'emoji': '✅', 'label': 'Connected'},
+                'disconnected': {'emoji': '📴', 'label': 'Disconnected'},
             }
             config = state_config.get(call_state, state_config['idle'])
 
-            # Display connection status
-            st.markdown(f"#### {config['emoji']} {config['label']}")
+            # Single-row status bar
+            status_col1, status_col2, status_col3, status_col4 = st.columns([3, 1, 1, 0.5])
 
-            # Display metrics in columns
-            col_a, col_b, col_c = st.columns(3)
-            with col_a:
-                st.metric("Conference Status", status_data.get('status', 'unknown').upper())
-            with col_b:
-                st.metric("Participants", participant_count)
-            with col_c:
-                # Calculate duration from timestamps if available
+            with status_col1:
+                # Conference status + Callee status
+                conf_status = status_data.get('status', 'unknown').upper()
+                st.markdown(f"📞 **{conf_status}** • {config['emoji']} {config['label']}")
+
+            with status_col2:
+                # Participant count
+                st.markdown(f"👥 **{participant_count}**")
+
+            with status_col3:
+                # Duration timer
                 if 'created_at' in status_data:
                     try:
                         from datetime import datetime
@@ -378,24 +377,33 @@ def render_realtime_call_status():
                         now = datetime.utcnow()
                         duration_secs = int((now - created).total_seconds())
                         duration_mins = duration_secs // 60
-                        duration_secs = duration_secs % 60
-                        st.metric("Duration", f"{duration_mins}m {duration_secs}s")
+                        duration_rem_secs = duration_secs % 60
+                        st.markdown(f"⏱️ **{duration_mins:02d}:{duration_rem_secs:02d}**")
                     except:
-                        st.metric("Duration", "N/A")
+                        st.markdown("⏱️ **--:--**")
                 else:
-                    st.metric("Duration", "N/A")
+                    st.markdown("⏱️ **--:--**")
 
-            # Display last update time
-            if 'updated_at' in status_data:
-                st.caption(f"Last updated: {status_data['updated_at']}")
+            with status_col4:
+                # Mic indicator
+                mic_icon = "🔇" if st.session_state.is_muted else "🎤"
+                st.markdown(mic_icon)
 
-            # Display recent events (if available)
-            if 'events' in status_data and status_data['events']:
-                with st.expander("📜 Recent Events", expanded=False):
+            # Collapsible details section
+            with st.expander("📊 Call Details", expanded=False):
+                # Recent events (if available)
+                if 'events' in status_data and status_data['events']:
+                    st.markdown("**Recent Events:**")
                     for event in reversed(status_data['events'][-5:]):  # Show last 5 events
                         event_type = event.get('type', 'unknown')
                         timestamp = event.get('timestamp', '')
                         st.text(f"• {event_type} at {timestamp}")
+                else:
+                    st.text("No events yet")
+
+                # Last update timestamp
+                if 'updated_at' in status_data:
+                    st.caption(f"Last updated: {status_data['updated_at']}")
         else:
             # No data in Redis yet - show waiting message
             st.info("⏳ Waiting for call status... (Connecting to Twilio)")
@@ -472,8 +480,8 @@ if not st.session_state.contacts:
                     # Load contacts button (always loads page 1)
                     if st.button("📥 Load Contacts", type="primary", use_container_width=True):
                         with st.spinner(f"Loading contacts from '{selected_filter_name}'..."):
-                            # Always load page 1 with default page size
-                            default_page_size = 50
+                            # Always load page 1 with default page size (reduced from 50 to 20 for better performance)
+                            default_page_size = 20
                             result = odoo.load_contacts_from_filter(filter_id, page=1, page_size=default_page_size)
 
                             if 'error' in result:
@@ -592,9 +600,22 @@ else:
             st.rerun()
 
     # Display contacts in table with dial buttons
+    # Header row
+    header_cols = st.columns([2.5, 1.5, 1, 1.5, 0.8, 1.5, 1.5, 1])
+    header_cols[0].markdown("**Name/Company**")
+    header_cols[1].markdown("**Phone**")
+    header_cols[2].markdown("**Carrier**")
+    header_cols[3].markdown("**Status**")
+    header_cols[4].markdown("**Lead/ICP**")
+    header_cols[5].markdown("**Google**")
+    header_cols[6].markdown("**Outbound**")
+    header_cols[7].markdown("")  # Dial button column
+
+    st.markdown("---")
+
     for idx, contact in enumerate(st.session_state.contacts):
-        # Combined layout: name+company in one column
-        col1, col2, col3, col4, col5 = st.columns([3, 2, 1.5, 1.5, 1])
+        # Main row
+        col1, col2, col3, col4, col5, col6, col7, col8 = st.columns([2.5, 1.5, 1, 1.5, 0.8, 1.5, 1.5, 1])
 
         with col1:
             # Smart display: combine name and company
@@ -623,19 +644,48 @@ else:
             st.text(contact['phone'])
 
         with col3:
-            # Show Odoo cold call status
-            odoo_status = contact.get('current_odoo_status', '').strip()
-
-            if odoo_status:
-                st.text(odoo_status)
-            else:
-                st.text("Not Started")
+            # Show carrier type
+            carrier = contact.get('carrier_type', '').strip()
+            st.text(carrier if carrier else '-')
 
         with col4:
-            if contact.get('call_outcome'):
-                st.text(contact['call_outcome'])
+            # Show Odoo cold call status
+            odoo_status = contact.get('current_odoo_status', '').strip()
+            st.text(odoo_status if odoo_status else "Not Started")
 
         with col5:
+            # Show Lead/ICP status (Valid Lead | Julya ICP)
+            valid_lead = contact.get('is_valid_lead', '-')
+            julya_icp = contact.get('is_julya_icp', '-')
+            st.text(f"{valid_lead}|{julya_icp}")
+
+        with col6:
+            # Show Google rating and reviews
+            rating = contact.get('google_rating', 0)
+            review_count = contact.get('google_review_count', 0)
+            if rating and rating > 0:
+                st.text(f"★ {rating:.1f} ({review_count})")
+            else:
+                st.text("-")
+
+        with col7:
+            # Show outbound status (only non-zero fields, names only)
+            outbound_fields = []
+            if contact.get('outbound_ivr', 0) > 0:
+                outbound_fields.append('IVR')
+            if contact.get('outbound_live', 0) > 0:
+                outbound_fields.append('Live')
+            if contact.get('outbound_no_answer', 0) > 0:
+                outbound_fields.append('No Answer')
+            if contact.get('outbound_voicemail', 0) > 0:
+                outbound_fields.append('Voicemail')
+
+            if outbound_fields:
+                st.text(', '.join(outbound_fields))
+            else:
+                st.text('-')
+
+        with col8:
             # Dial button (always available when not in a call)
             if st.session_state.dialer_state == 'idle':
                 # Show "Dial" or "Redial" based on Odoo status
@@ -649,10 +699,7 @@ else:
                     if not is_valid:
                         st.error(f"Invalid phone number: {error}")
                     else:
-                        # Update contact with formatted phone
-                        st.session_state.contacts[idx]['phone'] = formatted_phone
-
-                        # Initiate call
+                        # Initiate call (formatted_phone is used for dialing, original preserved for display)
                         st.session_state.current_call = {
                             'contact_idx': idx,
                             'contact': contact,
@@ -753,10 +800,17 @@ else:
 
         with col5:
             # Page size selector
+            page_size_options = [20, 25, 50, 100, 200]
+            # Find current page size index, default to 20 if not found
+            try:
+                current_index = page_size_options.index(pagination['page_size'])
+            except ValueError:
+                current_index = 0  # Default to 20
+
             new_page_size = st.selectbox(
                 "Per page:",
-                options=[25, 50, 100, 200],
-                index=[25, 50, 100, 200].index(pagination['page_size']),
+                options=page_size_options,
+                index=current_index,
                 key="pagination_page_size",
                 label_visibility="collapsed"
             )
@@ -800,20 +854,23 @@ else:
         if st.session_state.dialer_state == 'connected' and 'call_state' not in st.session_state:
             st.session_state.call_state = 'dialing'  # Initial state
 
-        # Display contact info
-        st.markdown(f"### Calling: {contact['name']}")
-        st.markdown(f"**Company:** {contact['company']}")
-        st.markdown(f"**Phone:** {call['formatted_phone']}")
+        # Display contact info (compact 3-line format)
+        st.markdown(f"## {contact['name']}")
+        st.caption(f"{contact['company']} • {call['formatted_phone']}")
 
-        # Call state display
-        state_messages = {
-            'dialing': '📞 Initiating call...',
-            'connecting': '🔗 Connecting to conference...',
-            'connected': '✅ Connected',
-            'ended': '📴 Call ended',
-        }
+        # Add address line (compact)
+        address_parts = []
+        if contact.get('street'):
+            address_parts.append(contact['street'])
+        if contact.get('city'):
+            address_parts.append(contact['city'])
+        if contact.get('state'):
+            address_parts.append(contact['state'])
 
-        st.info(state_messages.get(st.session_state.dialer_state, 'Unknown state'))
+        if address_parts:
+            st.caption(", ".join(address_parts))
+
+        st.markdown("---")
 
         # Initiate call if in dialing state
         if st.session_state.dialer_state == 'dialing':
@@ -868,28 +925,18 @@ else:
 
         # Show WebRTC component if connected
         if st.session_state.dialer_state == 'connected':
-            st.success("✅ Call connected! Browser audio active.")
-
-            # Render WebRTC component
+            # Render WebRTC component (hidden - minimal height)
             render_webrtc_component(
                 st.session_state.current_call['access_token'],
                 st.session_state.current_call['conference_sid'],
                 st.session_state.current_call['client_id']
             )
 
-            # Call timer
-            elapsed = (datetime.now() - call['start_time']).total_seconds()
-            minutes = int(elapsed // 60)
-            seconds = int(elapsed % 60)
-            st.metric("Call Duration", f"{minutes:02d}:{seconds:02d}")
-
-            # Microphone status indicator
-            mic_status = "🔇 Muted" if st.session_state.is_muted else "🎤 Active"
-            mic_color = "red" if st.session_state.is_muted else "green"
-            st.markdown(f"**Microphone:** :{mic_color}[{mic_status}]")
+            # Status bar with real-time data (will be rendered by fragment below)
+            # This section intentionally left minimal - fragment provides live status
 
             # Call controls
-            col1, col2, col3 = st.columns(3)
+            col1, col2 = st.columns(2)
 
             with col1:
                 # Single toggle button for mute/unmute
@@ -927,16 +974,10 @@ else:
                     except Exception as e:
                         st.error(f"End call failed: {str(e)}")
 
-            # Always-visible real-time status panel
             st.markdown("---")
 
-            # Use the new fragment-based real-time status display
-            # This auto-refreshes every 2 seconds without manual polling
+            # Real-time status panel with compact display
             render_realtime_call_status()
-
-            # Display called number info
-            st.markdown("**📱 Called Number:**")
-            st.code(call['formatted_phone'])
 
             # Audio feedback based on call state
             play_ringtone = st.session_state.call_state in ['dialing', 'ringing']
