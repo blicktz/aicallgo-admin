@@ -25,6 +25,9 @@ from components.cold_call.csv_parser import (
 from components.cold_call.phone_validator import validate_and_format
 from components.cold_call.api_client import ColdCallAPIClient
 
+# Import Odoo integration
+from components.cold_call.odoo_integration import get_odoo_integration
+
 # Import Redis service for real-time status
 from services.redis_service import get_redis_service
 
@@ -80,6 +83,31 @@ if 'is_muted' not in st.session_state:
 
 # Initialize API client
 api_client = ColdCallAPIClient()
+
+# Initialize Odoo integration
+odoo = get_odoo_integration()
+
+# Initialize session state for Odoo
+if 'odoo_filters' not in st.session_state:
+    st.session_state.odoo_filters = []
+
+if 'selected_filter_id' not in st.session_state:
+    st.session_state.selected_filter_id = None
+
+if 'odoo_pagination' not in st.session_state:
+    st.session_state.odoo_pagination = {
+        'page': 1,
+        'page_size': 50,
+        'total': 0,
+        'total_pages': 0,
+        'filter_name': ''
+    }
+
+if 'odoo_status_options' not in st.session_state:
+    if odoo.is_available():
+        st.session_state.odoo_status_options = odoo.get_status_display_names()
+    else:
+        st.session_state.odoo_status_options = []
 
 # Import logger
 import logging
@@ -385,47 +413,167 @@ st.markdown("### Upload contacts and make calls directly from your browser")
 st.markdown("---")
 
 # ====================
-# CSV Upload Section
+# Contact Loading Section
 # ====================
 if not st.session_state.contacts:
-    st.subheader("📤 Upload Contact List")
+    st.subheader("📤 Load Contact List")
 
-    col1, col2 = st.columns([2, 1])
+    # Create tabs for CSV upload and Odoo loading
+    if odoo.is_available():
+        tab1, tab2 = st.tabs(["📊 Load from Odoo", "📄 Upload CSV"])
+    else:
+        tab1, tab2 = st.tabs(["📄 Upload CSV", "ℹ️ Odoo Not Available"])
+        # Swap tabs if Odoo not available
+        tab2, tab1 = tab1, tab2
 
-    with col1:
-        uploaded_file = st.file_uploader(
-            "Upload CSV file with contacts",
-            type=['csv'],
-            help="CSV must contain columns: name, company, phone (optional: title)",
-        )
+    # Odoo Filter Loading Tab
+    with tab1:
+        if odoo.is_available():
+            st.markdown("### Load contacts from Odoo CRM saved search")
 
-    with col2:
-        st.markdown("**Required columns:**")
-        st.markdown("- `name` - Contact name")
-        st.markdown("- `company` - Company name")
-        st.markdown("- `phone` - Phone number")
-        st.markdown("- `title` - Job title (optional)")
+            # Fetch filters button
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                if st.button("🔄 Refresh Filters", use_container_width=True):
+                    with st.spinner("Fetching filters from Odoo..."):
+                        st.session_state.odoo_filters = odoo.get_available_filters()
+                    if st.session_state.odoo_filters:
+                        st.success(f"Found {len(st.session_state.odoo_filters)} filters")
+                    else:
+                        st.warning("No filters found")
 
-    if uploaded_file is not None:
-        with st.spinner("Validating CSV..."):
-            is_valid, error = validate_csv(uploaded_file)
+            # Auto-fetch on first load
+            if not st.session_state.odoo_filters:
+                with st.spinner("Fetching filters from Odoo..."):
+                    st.session_state.odoo_filters = odoo.get_available_filters()
 
-        if is_valid:
-            st.success("✅ CSV validation passed")
+            if st.session_state.odoo_filters:
+                # Filter selection
+                filter_names = [f['name'] for f in st.session_state.odoo_filters]
+                selected_filter_name = st.selectbox(
+                    "Select a saved search",
+                    options=filter_names,
+                    help="Choose one of your Odoo favorite filters"
+                )
 
-            try:
-                contacts = parse_contacts(uploaded_file)
-                st.session_state.contacts = contacts
-                st.success(f"✅ Loaded {len(contacts)} contacts")
-                st.rerun()
-            except Exception as e:
-                st.error(f"❌ Error parsing CSV: {str(e)}")
+                # Get selected filter ID
+                selected_filter = next(
+                    (f for f in st.session_state.odoo_filters if f['name'] == selected_filter_name),
+                    None
+                )
+
+                if selected_filter:
+                    filter_id = selected_filter['id']
+
+                    # Get total count
+                    total_contacts = odoo.get_filter_contact_count(filter_id)
+                    st.info(f"📊 This filter contains **{total_contacts}** contacts")
+
+                    # Pagination controls
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        page_size = st.selectbox(
+                            "Contacts per page",
+                            options=[25, 50, 100, 200],
+                            index=1,
+                            key="odoo_page_size"
+                        )
+                    with col2:
+                        max_page = max(1, (total_contacts + page_size - 1) // page_size)
+                        page = st.number_input(
+                            "Page",
+                            min_value=1,
+                            max_value=max_page,
+                            value=1,
+                            key="odoo_page"
+                        )
+                    with col3:
+                        st.markdown(f"**Total pages:** {max_page}")
+
+                    # Load contacts button
+                    if st.button("📥 Load Contacts", type="primary", use_container_width=True):
+                        with st.spinner(f"Loading contacts from '{selected_filter_name}'..."):
+                            result = odoo.load_contacts_from_filter(filter_id, page, page_size)
+
+                            if 'error' in result:
+                                st.error(f"❌ Error: {result['error']}")
+                            elif result['contacts']:
+                                st.session_state.contacts = result['contacts']
+                                st.session_state.odoo_pagination = {
+                                    'page': result['page'],
+                                    'page_size': result['page_size'],
+                                    'total': result['total'],
+                                    'total_pages': result['total_pages'],
+                                    'filter_name': result['filter_name']
+                                }
+                                st.success(
+                                    f"✅ Loaded {len(result['contacts'])} contacts "
+                                    f"from '{result['filter_name']}' "
+                                    f"(page {result['page']}/{result['total_pages']})"
+                                )
+                                st.rerun()
+                            else:
+                                st.warning("No contacts found with phone numbers")
+            else:
+                st.info("No saved searches found in Odoo. Create filters in Odoo CRM first.")
         else:
-            st.error(f"❌ CSV validation failed: {error}")
+            st.warning("""
+            **Odoo integration not available**
 
-    # Example CSV format
-    with st.expander("📋 Example CSV Format"):
-        st.code("""name,company,phone,title
+            To enable Odoo integration, configure the following environment variables:
+            - `ODOO_URL` - Odoo instance URL
+            - `ODOO_DB` - Database name
+            - `ODOO_USERNAME` - Username
+            - `ODOO_PASSWORD` - Password
+            """)
+
+    # CSV Upload Tab
+    with tab2:
+        st.markdown("### Upload CSV file with contacts")
+
+        col1, col2 = st.columns([2, 1])
+
+        with col1:
+            uploaded_file = st.file_uploader(
+                "Upload CSV file with contacts",
+                type=['csv'],
+                help="CSV must contain columns: name, company, phone (optional: title)",
+            )
+
+        with col2:
+            st.markdown("**Required columns:**")
+            st.markdown("- `name` - Contact name")
+            st.markdown("- `company` - Company name")
+            st.markdown("- `phone` - Phone number")
+            st.markdown("- `title` - Job title (optional)")
+
+        if uploaded_file is not None:
+            with st.spinner("Validating CSV..."):
+                is_valid, error = validate_csv(uploaded_file)
+
+            if is_valid:
+                st.success("✅ CSV validation passed")
+
+                try:
+                    contacts = parse_contacts(uploaded_file)
+                    st.session_state.contacts = contacts
+                    st.session_state.odoo_pagination = {
+                        'page': 1,
+                        'page_size': len(contacts),
+                        'total': len(contacts),
+                        'total_pages': 1,
+                        'filter_name': 'CSV Upload'
+                    }
+                    st.success(f"✅ Loaded {len(contacts)} contacts")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Error parsing CSV: {str(e)}")
+            else:
+                st.error(f"❌ CSV validation failed: {error}")
+
+        # Example CSV format
+        with st.expander("📋 Example CSV Format"):
+            st.code("""name,company,phone,title
 John Doe,Acme Corp,+15551234567,Sales Manager
 Jane Smith,Tech Inc,(555) 987-6543,CEO
 Bob Johnson,Widget Co,555-111-2222,Director""", language="csv")
@@ -436,12 +584,29 @@ else:
     # ====================
     st.subheader(f"📋 Contact List ({len(st.session_state.contacts)} contacts)")
 
+    # Show pagination info if from Odoo
+    if st.session_state.odoo_pagination.get('filter_name'):
+        pagination = st.session_state.odoo_pagination
+        if pagination['filter_name'] != 'CSV Upload':
+            st.info(
+                f"📊 Showing page {pagination['page']}/{pagination['total_pages']} "
+                f"from Odoo filter '{pagination['filter_name']}' "
+                f"({pagination['total']} total contacts)"
+            )
+
     col1, col2 = st.columns([3, 1])
 
     with col2:
         if st.button("🔄 Load New List", use_container_width=True):
             st.session_state.contacts = []
             st.session_state.current_call = None
+            st.session_state.odoo_pagination = {
+                'page': 1,
+                'page_size': 50,
+                'total': 0,
+                'total_pages': 0,
+                'filter_name': ''
+            }
             st.rerun()
 
     # Display contacts in table with dial buttons
@@ -683,11 +848,20 @@ else:
             st.markdown("---")
             st.subheader("📝 Log Call Outcome")
 
-            outcome = st.selectbox(
-                "Call Outcome",
-                ["Connected", "Voicemail", "No Answer", "Busy", "Wrong Number", "Callback Requested"],
-                key="call_outcome",
-            )
+            # Use dynamic Odoo status options if available, otherwise fallback
+            if st.session_state.odoo_status_options:
+                outcome = st.selectbox(
+                    "Call Outcome",
+                    st.session_state.odoo_status_options,
+                    key="call_outcome",
+                    help="Status options from Odoo CRM"
+                )
+            else:
+                outcome = st.selectbox(
+                    "Call Outcome",
+                    ["Connected", "Voicemail", "No Answer", "Busy", "Wrong Number", "Callback Requested"],
+                    key="call_outcome",
+                )
 
             notes = st.text_area(
                 "Notes",
@@ -696,11 +870,23 @@ else:
                 key="call_notes",
             )
 
+            # Show Odoo sync option if contact has odoo_id
+            save_to_odoo = False
+            if contact.get('odoo_id') and odoo.is_available():
+                save_to_odoo = st.checkbox(
+                    "📊 Save to Odoo CRM",
+                    value=True,
+                    help="Update contact status and create activity note in Odoo"
+                )
+
             col1, col2 = st.columns(2)
 
             with col1:
                 if st.button("💾 Save & Close", use_container_width=True, type="primary"):
-                    # Update contact
+                    # Calculate duration
+                    duration = int((datetime.now() - call['start_time']).total_seconds())
+
+                    # Update local contact
                     update_contact_status(
                         st.session_state.contacts,
                         call['contact_idx'],
@@ -715,8 +901,28 @@ else:
                         'outcome': outcome,
                         'notes': notes,
                         'timestamp': datetime.now(),
-                        'duration': (datetime.now() - call['start_time']).total_seconds(),
+                        'duration': duration,
                     })
+
+                    # Save to Odoo if enabled
+                    if save_to_odoo and contact.get('odoo_id'):
+                        with st.spinner("Saving to Odoo..."):
+                            result = odoo.complete_call(
+                                odoo_id=contact['odoo_id'],
+                                status_name=outcome,
+                                duration=duration,
+                                notes=notes
+                            )
+
+                            if result['success']:
+                                st.success("✅ Saved to Odoo CRM")
+                                if not result['status_updated']:
+                                    st.warning("⚠️ Status field not updated (check field mapping)")
+                                if not result['note_created']:
+                                    st.warning("⚠️ Note not created (check Odoo permissions)")
+                            else:
+                                st.error(f"❌ Failed to save to Odoo: {result.get('error', 'Unknown error')}")
+                                time.sleep(2)  # Show error briefly
 
                     # Clear current call
                     st.session_state.current_call = None
