@@ -469,31 +469,12 @@ if not st.session_state.contacts:
                     total_contacts = odoo.get_filter_contact_count(filter_id)
                     st.info(f"📊 This filter contains **{total_contacts}** contacts")
 
-                    # Pagination controls
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        page_size = st.selectbox(
-                            "Contacts per page",
-                            options=[25, 50, 100, 200],
-                            index=1,
-                            key="odoo_page_size"
-                        )
-                    with col2:
-                        max_page = max(1, (total_contacts + page_size - 1) // page_size)
-                        page = st.number_input(
-                            "Page",
-                            min_value=1,
-                            max_value=max_page,
-                            value=1,
-                            key="odoo_page"
-                        )
-                    with col3:
-                        st.markdown(f"**Total pages:** {max_page}")
-
-                    # Load contacts button
+                    # Load contacts button (always loads page 1)
                     if st.button("📥 Load Contacts", type="primary", use_container_width=True):
                         with st.spinner(f"Loading contacts from '{selected_filter_name}'..."):
-                            result = odoo.load_contacts_from_filter(filter_id, page, page_size)
+                            # Always load page 1 with default page size
+                            default_page_size = 50
+                            result = odoo.load_contacts_from_filter(filter_id, page=1, page_size=default_page_size)
 
                             if 'error' in result:
                                 st.error(f"❌ Error: {result['error']}")
@@ -504,7 +485,8 @@ if not st.session_state.contacts:
                                     'page_size': result['page_size'],
                                     'total': result['total'],
                                     'total_pages': result['total_pages'],
-                                    'filter_name': result['filter_name']
+                                    'filter_name': result['filter_name'],
+                                    'filter_id': filter_id  # Store filter_id for navigation
                                 }
                                 st.success(
                                     f"✅ Loaded {len(result['contacts'])} contacts "
@@ -611,18 +593,36 @@ else:
 
     # Display contacts in table with dial buttons
     for idx, contact in enumerate(st.session_state.contacts):
-        col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 2, 1.5, 1.5, 1])
+        # Combined layout: name+company in one column
+        col1, col2, col3, col4, col5 = st.columns([3, 2, 1.5, 1.5, 1])
 
         with col1:
-            st.text(contact['name'])
+            # Smart display: combine name and company
+            name = contact.get('name', '').strip()
+            company = contact.get('company', '').strip()
+
+            if name and company:
+                # Both exist - check if identical (case-insensitive)
+                if name.lower() == company.lower():
+                    # Identical - show only one
+                    st.text(name)
+                else:
+                    # Different - show both
+                    st.text(f"{name}, {company}")
+            elif name:
+                # Only name
+                st.text(name)
+            elif company:
+                # Only company
+                st.text(company)
+            else:
+                # Neither
+                st.text("(No name)")
 
         with col2:
-            st.text(contact['company'])
-
-        with col3:
             st.text(contact['phone'])
 
-        with col4:
+        with col3:
             # Status badge
             status_color = {
                 'pending': '🔵',
@@ -632,11 +632,11 @@ else:
             }
             st.text(f"{status_color.get(contact['status'], '⚪')} {contact['status']}")
 
-        with col5:
+        with col4:
             if contact.get('call_outcome'):
                 st.text(contact['call_outcome'])
 
-        with col6:
+        with col5:
             # Dial button (allow redialing completed/failed contacts)
             if contact['status'] in ['pending', 'completed', 'failed'] and st.session_state.dialer_state == 'idle':
                 # Change button label based on status
@@ -661,6 +661,126 @@ else:
                         st.session_state.dialer_state = 'dialing'
                         st.session_state.is_muted = False  # Reset mute state for new call
                         update_contact_status(st.session_state.contacts, idx, 'calling')
+                        st.rerun()
+
+    # ====================
+    # Pagination Controls (for Odoo loaded contacts)
+    # ====================
+    if (st.session_state.contacts and
+        st.session_state.odoo_pagination.get('filter_name') and
+        st.session_state.odoo_pagination['filter_name'] != 'CSV Upload'):
+
+        st.markdown("---")
+        st.markdown("### 📄 Page Navigation")
+
+        pagination = st.session_state.odoo_pagination
+        current_page = pagination['page']
+        total_pages = pagination['total_pages']
+        filter_id = pagination.get('filter_id')
+
+        # Create columns for pagination controls
+        col1, col2, col3, col4, col5 = st.columns([1, 1.5, 1, 2, 1.5])
+
+        with col1:
+            # Previous button
+            if st.button("◀ Previous", disabled=(current_page <= 1), use_container_width=True):
+                with st.spinner("Loading previous page..."):
+                    result = odoo.load_contacts_from_filter(
+                        filter_id,
+                        page=current_page - 1,
+                        page_size=pagination['page_size']
+                    )
+                    if result['contacts']:
+                        st.session_state.contacts = result['contacts']
+                        st.session_state.odoo_pagination.update({
+                            'page': result['page'],
+                            'total': result['total'],
+                            'total_pages': result['total_pages']
+                        })
+                        st.rerun()
+
+        with col2:
+            # Page indicator
+            st.markdown(f"**Page {current_page} of {total_pages}**")
+
+        with col3:
+            # Next button
+            if st.button("Next ▶", disabled=(current_page >= total_pages), use_container_width=True):
+                with st.spinner("Loading next page..."):
+                    result = odoo.load_contacts_from_filter(
+                        filter_id,
+                        page=current_page + 1,
+                        page_size=pagination['page_size']
+                    )
+                    if result['contacts']:
+                        st.session_state.contacts = result['contacts']
+                        st.session_state.odoo_pagination.update({
+                            'page': result['page'],
+                            'total': result['total'],
+                            'total_pages': result['total_pages']
+                        })
+                        st.rerun()
+
+        with col4:
+            # Jump to page
+            jump_col1, jump_col2 = st.columns([2, 1])
+            with jump_col1:
+                jump_page = st.number_input(
+                    "Jump to:",
+                    min_value=1,
+                    max_value=total_pages,
+                    value=current_page,
+                    key="jump_page_input",
+                    label_visibility="collapsed"
+                )
+            with jump_col2:
+                if st.button("Go", use_container_width=True):
+                    if jump_page != current_page:
+                        with st.spinner(f"Loading page {jump_page}..."):
+                            result = odoo.load_contacts_from_filter(
+                                filter_id,
+                                page=jump_page,
+                                page_size=pagination['page_size']
+                            )
+                            if result['contacts']:
+                                st.session_state.contacts = result['contacts']
+                                st.session_state.odoo_pagination.update({
+                                    'page': result['page'],
+                                    'total': result['total'],
+                                    'total_pages': result['total_pages']
+                                })
+                                st.rerun()
+
+        with col5:
+            # Page size selector
+            new_page_size = st.selectbox(
+                "Per page:",
+                options=[25, 50, 100, 200],
+                index=[25, 50, 100, 200].index(pagination['page_size']),
+                key="pagination_page_size",
+                label_visibility="collapsed"
+            )
+
+            # Reload if page size changed
+            if new_page_size != pagination['page_size']:
+                with st.spinner(f"Reloading with {new_page_size} contacts per page..."):
+                    # Calculate which page to show (try to keep roughly same position)
+                    old_first_contact = (current_page - 1) * pagination['page_size']
+                    new_page = max(1, (old_first_contact // new_page_size) + 1)
+
+                    result = odoo.load_contacts_from_filter(
+                        filter_id,
+                        page=new_page,
+                        page_size=new_page_size
+                    )
+                    if result['contacts']:
+                        st.session_state.contacts = result['contacts']
+                        st.session_state.odoo_pagination.update({
+                            'page': result['page'],
+                            'page_size': result['page_size'],
+                            'total': result['total'],
+                            'total_pages': result['total_pages']
+                        })
                         st.rerun()
 
     # ====================
