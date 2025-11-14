@@ -76,6 +76,16 @@ class Settings(BaseSettings):
     WEB_BACKEND_URL: str = "http://aicallgo_app:8000"  # Web backend base URL (Docker service name)
     INTERNAL_API_KEY: str  # Internal API key for service-to-service auth
 
+    # Cold Call Dialer Configuration
+    OUTCALL_AGENT_INTERNAL_URL: str = "http://outcall-agent:8000"  # Outcall agent service URL
+    ENABLE_COLD_CALL_DIALER: bool = True  # Enable cold call dialer feature
+
+    # Odoo CRM Integration (for Cold Call Dialer)
+    ODOO_URL: str = "https://odoo.julya.ai"  # Odoo instance URL (public for local, VPC for prod)
+    ODOO_DB: str = "odoo"  # Odoo database name
+    ODOO_USERNAME: str = "admin"  # Odoo API username
+    ODOO_PASSWORD: str = ""  # Odoo API password (leave empty to disable Odoo integration)
+
     # Twilio Phone Number Pool Configuration
     PN_ACTIVE_NUMBER_MAX_POOL_SIZE: int = 4  # Maximum active numbers in pool
     PN_PURCHASE_BATCH_SIZE: int = 1  # How many to buy at once

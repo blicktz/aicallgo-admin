@@ -40,6 +40,16 @@ services:
       # Web Backend API Configuration
       - WEB_BACKEND_URL=${WEB_BACKEND_URL:-http://aicallgo_app:8000}
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+
+      # Cold Call Dialer Configuration
+      - OUTCALL_AGENT_INTERNAL_URL=${OUTCALL_AGENT_INTERNAL_URL:-http://outcall_agent_backend:8000}
+      - ENABLE_COLD_CALL_DIALER=${ENABLE_COLD_CALL_DIALER:-true}
+
+      # Odoo CRM Integration (for Cold Call Dialer)
+      - ODOO_URL=${ODOO_URL:-https://odoo.julya.ai}
+      - ODOO_DB=${ODOO_DB:-odoo}
+      - ODOO_USERNAME=${ODOO_USERNAME:-admin}
+      - ODOO_PASSWORD=${ODOO_PASSWORD:-}
     volumes:
       # Live reload for application code
       - ./streamlit_app.py:/app/streamlit_app.py
@@ -47,6 +57,7 @@ services:
       - ./database:/app/database
       - ./static:/app/static
       - ./components:/app/components
+      - ./lib:/app/lib
       - ./services:/app/services
       - ./utils:/app/utils
       - ./pages:/app/pages

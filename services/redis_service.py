@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 
+import redis
 import redis.asyncio as aioredis
 from config.settings import settings
 
@@ -85,8 +86,10 @@ class RedisService:
     def __init__(self):
         """Initialize Redis service."""
         self.redis_client: Optional[aioredis.Redis] = None
+        self.redis_sync_client: Optional[redis.Redis] = None  # Sync client for cold call status
         self.is_connected = False
         self._connection_pool: Optional[aioredis.ConnectionPool] = None
+        self._sync_connection_pool: Optional[redis.ConnectionPool] = None
 
     async def connect(self) -> bool:
         """Connect to Redis.
@@ -330,6 +333,79 @@ class RedisService:
             return "warning"
         else:
             return "stale"
+
+    async def get_cold_call_status(self, conference_sid: str) -> Optional[Dict[str, Any]]:
+        """Get cold call status from Redis.
+
+        Args:
+            conference_sid: Conference SID or friendly name (e.g., COLD_CALL_xxx)
+
+        Returns:
+            Dict with call status data, or None if not found
+        """
+        if not self.redis_client or not self.is_connected:
+            await self.connect()
+
+        if not self.is_connected:
+            return None
+
+        try:
+            key = f"cold_call_status:{conference_sid}"
+            data = await self.redis_client.get(key)
+
+            if data:
+                return json.loads(data)
+            else:
+                logger.debug(f"No cold call status found for: {conference_sid}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error getting cold call status: {str(e)}", exc_info=True)
+            return None
+
+    def get_cold_call_status_sync(self, conference_sid: str) -> Optional[Dict[str, Any]]:
+        """Get cold call status from Redis using synchronous client.
+
+        This method uses a dedicated synchronous Redis client to avoid
+        event loop conflicts in Streamlit fragments.
+
+        Args:
+            conference_sid: Conference SID or friendly name (e.g., COLD_CALL_xxx)
+
+        Returns:
+            Dict with call status data, or None if not found
+        """
+        try:
+            # Initialize sync client if needed
+            if self.redis_sync_client is None:
+                if self._sync_connection_pool is None:
+                    self._sync_connection_pool = redis.ConnectionPool.from_url(
+                        settings.REDIS_URL,
+                        decode_responses=True,
+                        max_connections=10,
+                    )
+                self.redis_sync_client = redis.Redis(connection_pool=self._sync_connection_pool)
+                logger.info("Initialized synchronous Redis client for cold call status")
+
+            # Get status from Redis
+            key = f"cold_call_status:{conference_sid}"
+            data = self.redis_sync_client.get(key)
+
+            if data:
+                return json.loads(data)
+            else:
+                logger.debug(f"No cold call status found in Redis for: {conference_sid}")
+                return None
+
+        except redis.ConnectionError as e:
+            logger.error(f"Redis connection error getting cold call status: {str(e)}")
+            return None
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in Redis for {conference_sid}: {str(e)}")
+            return None
+        except Exception as e:
+            logger.error(f"Error getting cold call status sync: {str(e)}", exc_info=True)
+            return None
 
 
 # Singleton instance
