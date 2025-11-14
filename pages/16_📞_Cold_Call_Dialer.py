@@ -619,8 +619,8 @@ else:
 
         with col1:
             # Smart display: combine name and company
-            name = contact.get('name', '').strip()
-            company = contact.get('company', '').strip()
+            name = (contact.get('name') or '').strip()
+            company = (contact.get('company') or '').strip()
 
             if name and company:
                 # Both exist - check if identical (case-insensitive)
@@ -645,12 +645,12 @@ else:
 
         with col3:
             # Show carrier type
-            carrier = contact.get('carrier_type', '').strip()
+            carrier = (contact.get('carrier_type') or '').strip()
             st.text(carrier if carrier else '-')
 
         with col4:
             # Show Odoo cold call status
-            odoo_status = contact.get('current_odoo_status', '').strip()
+            odoo_status = (contact.get('current_odoo_status') or '').strip()
             st.text(odoo_status if odoo_status else "Not Started")
 
         with col5:
@@ -689,7 +689,7 @@ else:
             # Dial button (always available when not in a call)
             if st.session_state.dialer_state == 'idle':
                 # Show "Dial" or "Redial" based on Odoo status
-                odoo_status = contact.get('current_odoo_status', '').strip()
+                odoo_status = (contact.get('current_odoo_status') or '').strip()
                 button_label = "🔁 Redial" if odoo_status else "📞 Dial"
 
                 if st.button(button_label, key=f"dial_{idx}", use_container_width=True):
