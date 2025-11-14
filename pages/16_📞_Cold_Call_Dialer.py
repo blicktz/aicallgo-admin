@@ -623,24 +623,25 @@ else:
             st.text(contact['phone'])
 
         with col3:
-            # Status badge
-            status_color = {
-                'pending': '🔵',
-                'calling': '📞',
-                'completed': '✅',
-                'failed': '❌',
-            }
-            st.text(f"{status_color.get(contact['status'], '⚪')} {contact['status']}")
+            # Show Odoo cold call status
+            odoo_status = contact.get('current_odoo_status', '').strip()
+
+            if odoo_status:
+                st.text(odoo_status)
+            else:
+                st.text("Not Started")
 
         with col4:
             if contact.get('call_outcome'):
                 st.text(contact['call_outcome'])
 
         with col5:
-            # Dial button (allow redialing completed/failed contacts)
-            if contact['status'] in ['pending', 'completed', 'failed'] and st.session_state.dialer_state == 'idle':
-                # Change button label based on status
-                button_label = "📞 Dial" if contact['status'] == 'pending' else "🔁 Redial"
+            # Dial button (always available when not in a call)
+            if st.session_state.dialer_state == 'idle':
+                # Show "Dial" or "Redial" based on Odoo status
+                odoo_status = contact.get('current_odoo_status', '').strip()
+                button_label = "🔁 Redial" if odoo_status else "📞 Dial"
+
                 if st.button(button_label, key=f"dial_{idx}", use_container_width=True):
                     # Validate and format phone number
                     is_valid, formatted_phone, error = validate_and_format(contact['phone'])
@@ -660,7 +661,6 @@ else:
                         }
                         st.session_state.dialer_state = 'dialing'
                         st.session_state.is_muted = False  # Reset mute state for new call
-                        update_contact_status(st.session_state.contacts, idx, 'calling')
                         st.rerun()
 
     # ====================
@@ -837,13 +837,6 @@ else:
                 except Exception as e:
                     st.error(f"Failed to initiate call: {str(e)}")
                     st.session_state.dialer_state = 'ended'
-                    update_contact_status(
-                        st.session_state.contacts,
-                        call['contact_idx'],
-                        'failed',
-                        'failed',
-                        f"Error: {str(e)}",
-                    )
                     return
 
         # Join WebRTC if in connecting state
@@ -1006,15 +999,6 @@ else:
                     # Calculate duration
                     duration = int((datetime.now() - call['start_time']).total_seconds())
 
-                    # Update local contact
-                    update_contact_status(
-                        st.session_state.contacts,
-                        call['contact_idx'],
-                        'completed',
-                        outcome,
-                        notes,
-                    )
-
                     # Save to history
                     st.session_state.call_history.append({
                         'contact': contact,
@@ -1035,6 +1019,10 @@ else:
                             )
 
                             if result['success']:
+                                # Update local contact's Odoo status to reflect the change
+                                if result['status_updated']:
+                                    st.session_state.contacts[call['contact_idx']]['current_odoo_status'] = outcome
+
                                 st.success("✅ Saved to Odoo CRM")
                                 if not result['status_updated']:
                                     st.warning("⚠️ Status field not updated (check field mapping)")
@@ -1051,15 +1039,6 @@ else:
 
             with col2:
                 if st.button("❌ Cancel", use_container_width=True):
-                    # Mark as failed
-                    update_contact_status(
-                        st.session_state.contacts,
-                        call['contact_idx'],
-                        'pending',
-                        '',
-                        '',
-                    )
-
                     # Clear current call
                     st.session_state.current_call = None
                     st.session_state.dialer_state = 'idle'

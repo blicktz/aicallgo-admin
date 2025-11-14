@@ -354,21 +354,8 @@ class OdooIntegration:
             return False
 
         try:
-            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-            # Format duration
-            minutes = duration // 60
-            seconds = duration % 60
-            duration_str = f"{minutes}m {seconds}s" if minutes > 0 else f"{seconds}s"
-
-            # Build HTML note
-            body = f"""
-            <p><strong>🔵 Cold Call - {outcome_name}</strong></p>
-            <p><strong>Duration:</strong> {duration_str}</p>
-            <p><strong>Timestamp:</strong> {timestamp}</p>
-            <hr/>
-            <p>{notes if notes else '<i>No notes</i>'}</p>
-            """
+            # Build plain text note with only user's notes
+            body = notes if notes else '(No notes)'
 
             # Create note
             self.client.execute_kw(
