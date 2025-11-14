@@ -188,6 +188,7 @@ class OdooIntegration:
                     'id', 'name', 'phone', 'mobile',
                     'company_name', 'function', 'x_cold_call_status',
                     'email', 'city', 'country_id', 'street', 'state_id',
+                    'comment',  # Web crawled insights
                     # Custom fields
                     'x_phone_carrier_type',
                     'x_outbound_status_IVR', 'x_outbound_status_live',
@@ -249,6 +250,8 @@ class OdooIntegration:
                     # Address fields
                     'street': c.get('street', ''),
                     'state': c.get('state_id', [None, ''])[1] if c.get('state_id') else '',
+                    # Web crawled insights
+                    'comment': c.get('comment', ''),
                     # Custom fields
                     'carrier_type': c.get('x_phone_carrier_type', ''),
                     'is_valid_lead': format_boolean(c.get('x_is_valid_lead')),

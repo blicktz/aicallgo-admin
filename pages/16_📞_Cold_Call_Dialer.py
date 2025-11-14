@@ -710,6 +710,20 @@ else:
                         st.session_state.is_muted = False  # Reset mute state for new call
                         st.rerun()
 
+        # Expandable Business Insights section
+        if contact.get('comment'):
+            with st.expander("📋 Business Insights", expanded=False):
+                comment_text = contact['comment']
+
+                # Use scrollable container for long content (>2000 chars ≈ 400 words)
+                if len(comment_text) > 2000:
+                    with st.container(height=400):
+                        st.markdown(comment_text, unsafe_allow_html=True)
+                    st.caption("↑ Scroll for more ↑")
+                else:
+                    # Show full content if not too long
+                    st.markdown(comment_text, unsafe_allow_html=True)
+
     # ====================
     # Pagination Controls (for Odoo loaded contacts)
     # ====================
