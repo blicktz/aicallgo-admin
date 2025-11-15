@@ -353,29 +353,21 @@ def render_telnyx_direct_webrtc_component(
                         }});
 
                         console.log('Direct call initiated to {phone_number}');
+
+                        // Store call and client objects globally for hangup
                         window.telnyxCall = call;
                         window.telnyxClient = client;
 
-                        // Track call state changes
-                        call.on('stateChange', function(state) {{
-                            console.log('Call state changed:', state);
+                        // Log call ID for debugging (webhooks will track everything)
+                        if (call.id) {{
+                            console.log('Call Control ID:', call.id);
+                        }}
 
-                            // Log call control ID for debugging
-                            if (state === 'new' && call.id) {{
-                                console.log('Call Control ID:', call.id);
-                                // Execute callback if provided
-                                {call_control_id_callback}
-
-                                // Note: Recording should be configured in Telnyx Portal
-                                // for automatic recording on the SIP connection.
-                                // Alternatively, recording can be triggered via backend webhook.
-                            }}
-                        }});
-
-                        // Handle call end
-                        call.on('hangup', function() {{
-                            console.log('Call ended');
-                        }});
+                        // Note: All call tracking is handled by Telnyx webhooks
+                        // - call.initiated: Initial call attempt
+                        // - call.answered: Call connected
+                        // - call.hangup: Call ended
+                        // Recording is configured in Telnyx Portal for auto-recording
                     }});
 
                     client.on('telnyx.socket.error', function(error) {{
@@ -1246,11 +1238,28 @@ else:
             with col2:
                 if st.button("📴 End Call", use_container_width=True, type="primary", key="end_call_btn"):
                     try:
-                        api_client.end_call_sync(
-                            conference_sid=st.session_state.current_call['conference_sid'],
-                        )
-                        st.session_state.dialer_state = 'ended'
-                        st.rerun()
+                        # Telnyx: Use browser WebRTC SDK to hang up
+                        if PROVIDER == 'telnyx':
+                            # Trigger JavaScript hangup
+                            st.components.v1.html("""
+                                <script>
+                                if (window.telnyxCall) {
+                                    window.telnyxCall.hangup();
+                                    console.log('Call ended via WebRTC SDK');
+                                }
+                                </script>
+                            """, height=0)
+                            st.session_state.dialer_state = 'ended'
+                            st.rerun()
+
+                        # Twilio: Use conference API to end call
+                        else:
+                            api_client.end_call_sync(
+                                conference_sid=st.session_state.current_call['conference_sid'],
+                            )
+                            st.session_state.dialer_state = 'ended'
+                            st.rerun()
+
                     except Exception as e:
                         st.error(f"End call failed: {str(e)}")
 
