@@ -14,6 +14,10 @@ import time
 
 # Import authentication
 from config.auth import require_auth
+from config.settings import settings
+
+# Get provider from environment (deployment config)
+PROVIDER = settings.COLD_CALL_PROVIDER.lower()  # 'twilio' or 'telnyx'
 
 # Import cold call components
 from components.cold_call.csv_parser import (
@@ -116,7 +120,7 @@ logger = logging.getLogger(__name__)
 # ====================
 # Helper Functions
 # ====================
-def render_webrtc_component(access_token: str, conference_name: str, client_id: str):
+def render_twilio_webrtc_component(access_token: str, conference_name: str, client_id: str):
     """Render Twilio WebRTC component for browser audio.
 
     Args:
@@ -191,6 +195,75 @@ def render_webrtc_component(access_token: str, conference_name: str, client_id: 
         </script>
         <div style="padding: 5px; text-align: center; font-size: 0.8em; color: #666;">
             🎧 Audio active
+        </div>
+    </div>
+    """
+
+    st.components.v1.html(html_code, height=40)
+
+
+def render_telnyx_webrtc_component(sip_username: str, sip_password: str, conference_id: str, client_id: str):
+    """Render Telnyx WebRTC component for browser audio.
+
+    Args:
+        sip_username: Telnyx SIP username from backend
+        sip_password: Telnyx SIP password from backend
+        conference_id: Conference ID to join
+        client_id: Client identifier for participant labeling
+    """
+    html_code = f"""
+    <div id="telnyx-webrtc-container">
+        <script src="https://cdn.jsdelivr.net/npm/@telnyx/webrtc@2.x/dist/telnyx.min.js"></script>
+        <script>
+            window.addEventListener('load', function() {{
+                try {{
+                    if (typeof TelnyxRTC === 'undefined') {{
+                        throw new Error('Telnyx WebRTC SDK not loaded');
+                    }}
+
+                    console.log('Telnyx WebRTC SDK loaded successfully');
+
+                    const client = new TelnyxRTC({{
+                        login: '{sip_username}',
+                        password: '{sip_password}',
+                        ringbackFile: null,
+                        ringtoneFile: null,
+                    }});
+
+                    client.connect();
+
+                    client.on('telnyx.ready', function() {{
+                        console.log('Telnyx WebRTC Ready');
+                        const call = client.newCall({{
+                            destinationNumber: '{conference_id}',
+                            callerName: '{client_id}',
+                            audio: true,
+                            video: false
+                        }});
+                        console.log('Calling conference:', '{conference_id}');
+                        window.telnyxCall = call;
+                    }});
+
+                    client.on('telnyx.socket.error', function(error) {{
+                        console.error('WebSocket error:', error);
+                        alert('Connection error: ' + (error.message || 'Unknown error'));
+                    }});
+
+                    client.on('telnyx.error', function(error) {{
+                        console.error('Telnyx error:', error);
+                        alert('Telnyx error: ' + (error.message || 'Unknown error'));
+                    }});
+
+                    window.telnyxClient = client;
+
+                }} catch (error) {{
+                    console.error('Failed to initialize Telnyx WebRTC:', error);
+                    alert('Failed to load Telnyx WebRTC: ' + error.message);
+                }}
+            }});
+        </script>
+        <div style="padding: 5px; text-align: center; font-size: 0.8em; color: #666;">
+            🎧 Telnyx audio active
         </div>
     </div>
     """
@@ -417,6 +490,7 @@ def render_realtime_call_status():
 # Header
 # ====================
 st.title("📞 Cold Call Dialer")
+st.caption(f"Using {PROVIDER.title()} • Configured in deployment")
 st.markdown("### Upload contacts and make calls directly from your browser")
 st.markdown("---")
 
@@ -890,10 +964,10 @@ else:
         if st.session_state.dialer_state == 'dialing':
             with st.spinner("Creating conference and dialing..."):
                 try:
-                    # Call the initiate endpoint
+                    # Call the initiate endpoint with configured provider
                     response = api_client.initiate_call_sync(
                         to_phone=call['formatted_phone'],
-                        provider='twilio',
+                        provider=PROVIDER,
                     )
 
                     # Store conference details
@@ -923,8 +997,13 @@ else:
                         client_id=client_id,
                     )
 
-                    # Store WebRTC details
-                    st.session_state.current_call['access_token'] = webrtc_response['access_token']
+                    # Store provider-specific WebRTC credentials
+                    if PROVIDER == 'twilio':
+                        st.session_state.current_call['access_token'] = webrtc_response['access_token']
+                    elif PROVIDER == 'telnyx':
+                        st.session_state.current_call['sip_username'] = webrtc_response['sip_username']
+                        st.session_state.current_call['sip_password'] = webrtc_response['sip_password']
+
                     st.session_state.current_call['participant_sid'] = webrtc_response['participant_sid']
                     st.session_state.current_call['client_id'] = client_id
 
@@ -939,12 +1018,20 @@ else:
 
         # Show WebRTC component if connected
         if st.session_state.dialer_state == 'connected':
-            # Render WebRTC component (hidden - minimal height)
-            render_webrtc_component(
-                st.session_state.current_call['access_token'],
-                st.session_state.current_call['conference_sid'],
-                st.session_state.current_call['client_id']
-            )
+            # Render provider-specific WebRTC component
+            if PROVIDER == 'twilio':
+                render_twilio_webrtc_component(
+                    st.session_state.current_call['access_token'],
+                    st.session_state.current_call['conference_sid'],
+                    st.session_state.current_call['client_id']
+                )
+            elif PROVIDER == 'telnyx':
+                render_telnyx_webrtc_component(
+                    st.session_state.current_call['sip_username'],
+                    st.session_state.current_call['sip_password'],
+                    st.session_state.current_call['conference_id'],
+                    st.session_state.current_call['client_id']
+                )
 
             # Status bar with real-time data (will be rendered by fragment below)
             # This section intentionally left minimal - fragment provides live status

@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     # Cold Call Dialer Configuration
     OUTCALL_AGENT_INTERNAL_URL: str = "http://outcall-agent:8000"  # Outcall agent service URL
     ENABLE_COLD_CALL_DIALER: bool = True  # Enable cold call dialer feature
+    COLD_CALL_PROVIDER: str = "twilio"  # Cold call telephony provider (twilio or telnyx)
 
     # Odoo CRM Integration (for Cold Call Dialer)
     ODOO_URL: str = "https://odoo.julya.ai"  # Odoo instance URL (public for local, VPC for prod)
@@ -93,6 +94,16 @@ class Settings(BaseSettings):
     PN_ACTIVE_NUMBER_MAX_POOL_SIZE: int = 4  # Maximum active numbers in pool
     PN_PURCHASE_BATCH_SIZE: int = 1  # How many to buy at once
     PN_MAX_UNUSED: int = 2  # Max unassigned available numbers
+
+    @field_validator("COLD_CALL_PROVIDER")
+    @classmethod
+    def validate_cold_call_provider(cls, v: str) -> str:
+        """Validate cold call provider."""
+        allowed = ["twilio", "telnyx"]
+        v = v.lower()
+        if v not in allowed:
+            raise ValueError(f"COLD_CALL_PROVIDER must be one of {allowed}, got '{v}'")
+        return v
 
     class Config:
         env_file = ".env"
