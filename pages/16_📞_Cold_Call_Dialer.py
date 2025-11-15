@@ -1108,8 +1108,19 @@ else:
         if st.session_state.dialer_state == 'dialing':
             # Telnyx: Direct calling mode (no conference)
             if PROVIDER == 'telnyx':
-                with st.spinner("Getting WebRTC credentials..."):
+                with st.spinner("Preparing call..."):
                     try:
+                        # Generate unique call_id for tracking
+                        call_id = f"DIRECT_{uuid.uuid4().hex[:12]}"
+
+                        # Register call with backend before initiating
+                        # This allows webhooks to link call_control_id to call_id
+                        api_client.register_direct_call_sync(
+                            call_id=call_id,
+                            to_phone=call['formatted_phone'],
+                            from_phone=settings.TELNYX_SIP_PHONE_NUMBER if hasattr(settings, 'TELNYX_SIP_PHONE_NUMBER') else ''
+                        )
+
                         # Get SIP credentials for direct calling
                         response = api_client.get_direct_webrtc_credentials_sync()
 
@@ -1119,12 +1130,16 @@ else:
                         st.session_state.current_call['to_phone'] = call['formatted_phone']
                         st.session_state.current_call['from_phone'] = settings.TELNYX_SIP_PHONE_NUMBER if hasattr(settings, 'TELNYX_SIP_PHONE_NUMBER') else ''
 
+                        # Store call_id as conference_sid for consistent polling
+                        st.session_state.current_call['conference_sid'] = call_id
+                        st.session_state.current_call['conference_id'] = call_id
+
                         # Skip to connected state (no conference to join)
                         st.session_state.dialer_state = 'connected'
                         st.rerun()
 
                     except Exception as e:
-                        st.error(f"Failed to get WebRTC credentials: {str(e)}")
+                        st.error(f"Failed to prepare call: {str(e)}")
                         st.session_state.dialer_state = 'ended'
                         return
 
@@ -1233,9 +1248,15 @@ else:
             with col2:
                 if st.button("📴 End Call", use_container_width=True, type="primary", key="end_call_btn"):
                     try:
-                        # Telnyx: Use browser WebRTC SDK to hang up
+                        # Telnyx: Call backend API to properly hangup
                         if PROVIDER == 'telnyx':
-                            # Trigger JavaScript hangup
+                            # Call backend to hangup via Telnyx API
+                            # This ensures proper cleanup and webhook processing
+                            api_client.hangup_direct_call_sync(
+                                call_id=st.session_state.current_call['conference_sid']
+                            )
+
+                            # Also trigger browser-side hangup for immediate audio disconnection
                             st.components.v1.html("""
                                 <script>
                                 if (window.telnyxCall) {
@@ -1244,6 +1265,7 @@ else:
                                 }
                                 </script>
                             """, height=0)
+
                             st.session_state.dialer_state = 'ended'
                             st.rerun()
 

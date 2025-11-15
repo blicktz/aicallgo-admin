@@ -110,6 +110,9 @@ share-shell: ## Open shell in admin board container
 share-restart: ## Restart admin board container
 	docker-compose -f docker-compose.share.yml restart admin_board
 
+share-rebuild: ## Rebuild and restart shared Docker setup (down -> build -> up)
+	$(MAKE) share-down && $(MAKE) share-build && $(MAKE) share-up
+
 share-full: ## Complete shared setup with instructions
 	@echo "Starting Admin Board with shared webbackend services..."
 	@echo ""
