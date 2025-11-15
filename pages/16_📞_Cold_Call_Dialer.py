@@ -992,10 +992,9 @@ else:
         if st.session_state.dialer_state == 'dialing':
             with st.spinner("Creating conference and dialing..."):
                 try:
-                    # Call the initiate endpoint with configured provider
+                    # Call the initiate endpoint (uses static TELEPHONY_SYSTEM env var)
                     response = api_client.initiate_call_sync(
                         to_phone=call['formatted_phone'],
-                        provider=PROVIDER,
                     )
 
                     # Store conference details

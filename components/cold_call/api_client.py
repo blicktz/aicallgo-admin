@@ -31,26 +31,26 @@ class ColdCallAPIClient:
             'X-API-Key': self.api_key,
         }
 
-    async def initiate_call(self, to_phone: str, from_phone: Optional[str] = None,
-                           provider: str = 'twilio') -> Dict[str, Any]:
+    async def initiate_call(self, to_phone: str, from_phone: Optional[str] = None) -> Dict[str, Any]:
         """Initiate a cold call.
 
         Args:
             to_phone: Destination phone number (E.164 format)
             from_phone: Caller ID phone number (E.164 format, optional)
-            provider: Telephony provider ('twilio' or 'telnyx')
 
         Returns:
             Conference details including SIDs and access token
 
         Raises:
             httpx.HTTPError: If API request fails
+
+        Note:
+            Provider is determined by TELEPHONY_SYSTEM environment variable on the server.
         """
         url = f"{self.base_url}/aicallgo/api/v1/cold-call/initiate"
 
         payload = {
             'to_phone': to_phone,
-            'provider': provider,
         }
 
         if from_phone:
@@ -217,8 +217,7 @@ class ColdCallAPIClient:
                 logger.error(f"[STATUS ERROR] Response: {getattr(e, 'response', None)}")
                 raise
 
-    def initiate_call_sync(self, to_phone: str, from_phone: Optional[str] = None,
-                          provider: str = 'twilio') -> Dict[str, Any]:
+    def initiate_call_sync(self, to_phone: str, from_phone: Optional[str] = None) -> Dict[str, Any]:
         """Synchronous version of initiate_call."""
         import asyncio
         try:
@@ -227,7 +226,7 @@ class ColdCallAPIClient:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
-        return loop.run_until_complete(self.initiate_call(to_phone, from_phone, provider))
+        return loop.run_until_complete(self.initiate_call(to_phone, from_phone))
 
     def join_webrtc_sync(self, conference_id: str, client_id: str,
                         provider: str = 'twilio', sdp_offer: Optional[str] = None) -> Dict[str, Any]:
