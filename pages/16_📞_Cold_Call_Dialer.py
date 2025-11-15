@@ -247,6 +247,17 @@ def render_telnyx_webrtc_component(sip_username: str, sip_password: str, confere
                     }});
 
                     client.on('telnyx.error', function(error) {{
+                        // Filter out expected errors that shouldn't show alerts
+                        const expectedErrors = [
+                            -32002, // CALL DOES NOT EXIST (happens when call already ended by backend)
+                        ];
+
+                        const errorCode = error?.error?.code;
+                        if (expectedErrors.includes(errorCode)) {{
+                            console.log('Expected Telnyx error (ignoring):', error.error.message);
+                            return; // Don't show alert for expected errors
+                        }}
+
                         console.error('Telnyx error:', error);
                         alert('Telnyx error: ' + (error.message || 'Unknown error'));
                     }});
@@ -372,6 +383,17 @@ def render_telnyx_direct_webrtc_component(
                     }});
 
                     client.on('telnyx.error', function(error) {{
+                        // Filter out expected errors that shouldn't show alerts
+                        const expectedErrors = [
+                            -32002, // CALL DOES NOT EXIST (happens when call already ended by backend)
+                        ];
+
+                        const errorCode = error?.error?.code;
+                        if (expectedErrors.includes(errorCode)) {{
+                            console.log('Expected Telnyx error (ignoring):', error.error.message);
+                            return; // Don't show alert for expected errors
+                        }}
+
                         console.error('Telnyx error:', error);
                         alert('Telnyx error: ' + (error.message || 'Unknown error'));
                     }});
@@ -1285,8 +1307,20 @@ else:
                                 <script>
                                 // Access call from top-level window (cross-iframe)
                                 if (window.top.telnyxCall) {
-                                    window.top.telnyxCall.hangup();
-                                    console.log('Call ended via WebRTC SDK');
+                                    try {
+                                        // Call hangup and handle promise rejection
+                                        const hangupPromise = window.top.telnyxCall.hangup();
+                                        if (hangupPromise && hangupPromise.catch) {
+                                            hangupPromise.catch(function(err) {
+                                                // Promise rejection is expected when backend hangs up first
+                                                console.log('Hangup promise rejected (expected):', err.message || err);
+                                            });
+                                        }
+                                        console.log('Call ended via WebRTC SDK');
+                                    } catch (error) {
+                                        // Call may already be ended by backend - this is expected
+                                        console.log('Browser hangup: Call already ended (expected)', error.message);
+                                    }
                                 } else {
                                     console.error('telnyxCall not found in window.top');
                                 }
