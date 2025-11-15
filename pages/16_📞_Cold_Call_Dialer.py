@@ -354,9 +354,10 @@ def render_telnyx_direct_webrtc_component(
 
                         console.log('Direct call initiated to {phone_number}');
 
-                        // Store call and client objects globally for hangup
-                        window.telnyxCall = call;
-                        window.telnyxClient = client;
+                        // Store call and client objects in top-level window for cross-iframe access
+                        // This allows mute button (in different iframe) to access the call
+                        window.top.telnyxCall = call;
+                        window.top.telnyxClient = client;
 
                         // Note: Call tracking and recording are handled automatically by backend webhooks
                         // - call.initiated: Call attempt logged
@@ -1230,17 +1231,40 @@ else:
                         # Toggle the mute state
                         new_mute_state = not st.session_state.is_muted
 
-                        api_client.mute_participant_sync(
-                            conference_sid=st.session_state.current_call['conference_sid'],
-                            participant_sid=st.session_state.current_call['participant_sid'],
-                            muted=new_mute_state,
-                        )
+                        # Handle mute differently based on provider
+                        if PROVIDER == 'telnyx':
+                            # Telnyx: Use client-side WebRTC SDK for mute/unmute
+                            # The Telnyx WebRTC SDK uses muteAudio() and unmuteAudio() methods
+                            mute_action = 'muteAudio' if new_mute_state else 'unmuteAudio'
+                            st.components.v1.html(f"""
+                                <script>
+                                // Access call from top-level window (cross-iframe)
+                                if (window.top.telnyxCall) {{
+                                    window.top.telnyxCall.{mute_action}();
+                                    console.log('Microphone {mute_action}() called via WebRTC SDK');
+                                }} else {{
+                                    console.error('telnyxCall not found in window.top');
+                                }}
+                                </script>
+                            """, height=0)
 
-                        # Update state only after successful API call
-                        st.session_state.is_muted = new_mute_state
+                            # Update state immediately (no backend API call needed)
+                            st.session_state.is_muted = new_mute_state
+                            st.rerun()
 
-                        # Force rerun to sync button label with actual state
-                        st.rerun()
+                        else:
+                            # Twilio: Use backend API for conference participant mute
+                            api_client.mute_participant_sync(
+                                conference_sid=st.session_state.current_call['conference_sid'],
+                                participant_sid=st.session_state.current_call['participant_sid'],
+                                muted=new_mute_state,
+                            )
+
+                            # Update state only after successful API call
+                            st.session_state.is_muted = new_mute_state
+
+                            # Force rerun to sync button label with actual state
+                            st.rerun()
 
                     except Exception as e:
                         st.error(f"Mute toggle failed: {str(e)}")
@@ -1259,9 +1283,12 @@ else:
                             # Also trigger browser-side hangup for immediate audio disconnection
                             st.components.v1.html("""
                                 <script>
-                                if (window.telnyxCall) {
-                                    window.telnyxCall.hangup();
+                                // Access call from top-level window (cross-iframe)
+                                if (window.top.telnyxCall) {
+                                    window.top.telnyxCall.hangup();
                                     console.log('Call ended via WebRTC SDK');
+                                } else {
+                                    console.error('telnyxCall not found in window.top');
                                 }
                                 </script>
                             """, height=0)
