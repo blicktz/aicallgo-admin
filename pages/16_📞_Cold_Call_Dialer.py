@@ -213,17 +213,14 @@ def render_telnyx_webrtc_component(sip_username: str, sip_password: str, confere
     """
     html_code = f"""
     <div id="telnyx-webrtc-container">
-        <script type="text/javascript" src="https://unpkg.com/@telnyx/webrtc@2/lib/bundle.js"></script>
         <script>
-            window.addEventListener('load', function() {{
+            // Function to initialize Telnyx after SDK loads
+            function initializeTelnyxWebRTC() {{
                 try {{
-                    if (typeof TelnyxRTC === 'undefined') {{
-                        throw new Error('Telnyx WebRTC SDK not loaded');
-                    }}
-
                     console.log('Telnyx WebRTC SDK loaded successfully');
 
-                    const client = new TelnyxRTC({{
+                    // When using bundle.js, access as TelnyxWebRTC.TelnyxRTC
+                    const client = new TelnyxWebRTC.TelnyxRTC({{
                         login: '{sip_username}',
                         password: '{sip_password}',
                         ringbackFile: null,
@@ -258,9 +255,40 @@ def render_telnyx_webrtc_component(sip_username: str, sip_password: str, confere
 
                 }} catch (error) {{
                     console.error('Failed to initialize Telnyx WebRTC:', error);
-                    alert('Failed to load Telnyx WebRTC: ' + error.message);
+                    alert('Failed to initialize Telnyx WebRTC: ' + error.message);
                 }}
-            }});
+            }}
+
+            // Dynamically load Telnyx SDK and wait for it
+            (function loadTelnyxSDK() {{
+                // Check if SDK already loaded (e.g., from previous render)
+                // Note: bundle.js exports as TelnyxWebRTC.TelnyxRTC
+                if (typeof TelnyxWebRTC !== 'undefined') {{
+                    console.log('Telnyx SDK already loaded, initializing...');
+                    initializeTelnyxWebRTC();
+                    return;
+                }}
+
+                // Create script element
+                const script = document.createElement('script');
+                script.type = 'text/javascript';
+                script.src = 'https://unpkg.com/@telnyx/webrtc@2/lib/bundle.js';
+
+                // Handle successful load
+                script.onload = function() {{
+                    console.log('Telnyx SDK script loaded, initializing...');
+                    initializeTelnyxWebRTC();
+                }};
+
+                // Handle load errors
+                script.onerror = function() {{
+                    console.error('Failed to load Telnyx WebRTC SDK from CDN');
+                    alert('Failed to load Telnyx WebRTC SDK. Please check your internet connection.');
+                }};
+
+                // Add script to page
+                document.head.appendChild(script);
+            }})();
         </script>
         <div style="padding: 5px; text-align: center; font-size: 0.8em; color: #666;">
             🎧 Telnyx audio active
