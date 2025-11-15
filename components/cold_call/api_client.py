@@ -273,3 +273,101 @@ class ColdCallAPIClient:
             asyncio.set_event_loop(loop)
 
         return loop.run_until_complete(self.get_status(conference_sid))
+
+    # ============================================================================
+    # Direct Calling Methods (Telnyx WebRTC Direct Mode)
+    # ============================================================================
+
+    async def get_direct_webrtc_credentials(self) -> Dict[str, Any]:
+        """Get SIP credentials for Telnyx WebRTC direct calling.
+
+        Returns:
+            SIP username and password for WebRTC authentication
+
+        Raises:
+            httpx.HTTPError: If API request fails
+        """
+        url = f"{self.base_url}/aicallgo/api/v1/cold-call/direct/webrtc-credentials"
+
+        logger.info("Getting direct WebRTC credentials")
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.get(
+                url,
+                headers=self._get_headers(),
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            logger.info(f"Direct WebRTC credentials retrieved: mode={data.get('mode')}")
+            return data
+
+    async def start_direct_recording(
+        self,
+        call_control_id: str,
+        to_phone: str,
+        from_phone: str
+    ) -> Dict[str, Any]:
+        """Start recording for a direct WebRTC call.
+
+        Args:
+            call_control_id: Call control ID from Telnyx WebRTC SDK
+            to_phone: Destination phone number
+            from_phone: Caller ID
+
+        Returns:
+            Recording start confirmation
+
+        Raises:
+            httpx.HTTPError: If API request fails
+        """
+        url = f"{self.base_url}/aicallgo/api/v1/cold-call/direct/start-recording"
+
+        payload = {
+            'call_control_id': call_control_id,
+            'to_phone': to_phone,
+            'from_phone': from_phone,
+        }
+
+        logger.info(f"Starting recording for direct call: {call_control_id}")
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(
+                url,
+                json=payload,
+                headers=self._get_headers(),
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            logger.info(f"Direct call recording started: {call_control_id}")
+            return data
+
+    def get_direct_webrtc_credentials_sync(self) -> Dict[str, Any]:
+        """Synchronous version of get_direct_webrtc_credentials."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return loop.run_until_complete(self.get_direct_webrtc_credentials())
+
+    def start_direct_recording_sync(
+        self,
+        call_control_id: str,
+        to_phone: str,
+        from_phone: str
+    ) -> Dict[str, Any]:
+        """Synchronous version of start_direct_recording."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return loop.run_until_complete(
+            self.start_direct_recording(call_control_id, to_phone, from_phone)
+        )

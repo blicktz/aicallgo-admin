@@ -299,6 +299,135 @@ def render_telnyx_webrtc_component(sip_username: str, sip_password: str, confere
     st.components.v1.html(html_code, height=40)
 
 
+def render_telnyx_direct_webrtc_component(
+    sip_username: str,
+    sip_password: str,
+    phone_number: str,
+    from_number: str,
+    call_control_id_callback: str = ""
+):
+    """Render Telnyx WebRTC component for DIRECT calling (no conference).
+
+    This is the simplified Telnyx-native approach that makes direct browser-to-phone calls.
+
+    Args:
+        sip_username: Telnyx SIP username
+        sip_password: Telnyx SIP password
+        phone_number: Destination phone number to call directly
+        from_number: Caller ID to use
+        call_control_id_callback: JavaScript code to execute when call_control_id is available
+    """
+    html_code = f"""
+    <div id="telnyx-direct-webrtc-container">
+        <script>
+            // Function to initialize Telnyx for direct calling
+            function initializeTelnyxDirectCall() {{
+                try {{
+                    console.log('Telnyx WebRTC SDK loaded - Direct Calling Mode');
+
+                    const client = new TelnyxWebRTC.TelnyxRTC({{
+                        login: '{sip_username}',
+                        password: '{sip_password}',
+                        ringbackFile: null,
+                        ringtoneFile: null,
+                    }});
+
+                    // Set up remote audio
+                    const audio = document.createElement('audio');
+                    audio.autoplay = true;
+                    audio.id = 'telnyx-remote-audio';
+                    document.body.appendChild(audio);
+                    client.remoteElement = 'telnyx-remote-audio';
+
+                    client.connect();
+
+                    client.on('telnyx.ready', function() {{
+                        console.log('Telnyx WebRTC Ready - Making direct call to {phone_number}');
+
+                        // Direct call to phone number - NO CONFERENCE!
+                        const call = client.newCall({{
+                            destinationNumber: '{phone_number}',
+                            callerNumber: '{from_number}',
+                            audio: true,
+                            video: false
+                        }});
+
+                        console.log('Direct call initiated to {phone_number}');
+                        window.telnyxCall = call;
+                        window.telnyxClient = client;
+
+                        // Track call state changes
+                        call.on('stateChange', function(state) {{
+                            console.log('Call state changed:', state);
+
+                            // Log call control ID for debugging
+                            if (state === 'new' && call.id) {{
+                                console.log('Call Control ID:', call.id);
+                                // Execute callback if provided
+                                {call_control_id_callback}
+
+                                // Note: Recording should be configured in Telnyx Portal
+                                // for automatic recording on the SIP connection.
+                                // Alternatively, recording can be triggered via backend webhook.
+                            }}
+                        }});
+
+                        // Handle call end
+                        call.on('hangup', function() {{
+                            console.log('Call ended');
+                        }});
+                    }});
+
+                    client.on('telnyx.socket.error', function(error) {{
+                        console.error('WebSocket error:', error);
+                        alert('Connection error: ' + (error.message || 'Unknown error'));
+                    }});
+
+                    client.on('telnyx.error', function(error) {{
+                        console.error('Telnyx error:', error);
+                        alert('Telnyx error: ' + (error.message || 'Unknown error'));
+                    }});
+
+                }} catch (error) {{
+                    console.error('Failed to initialize Telnyx Direct WebRTC:', error);
+                    alert('Failed to initialize Telnyx: ' + error.message);
+                }}
+            }}
+
+            // Load Telnyx SDK
+            (function loadTelnyxSDK() {{
+                if (typeof TelnyxWebRTC !== 'undefined') {{
+                    console.log('Telnyx SDK already loaded, starting direct call...');
+                    initializeTelnyxDirectCall();
+                    return;
+                }}
+
+                const script = document.createElement('script');
+                script.type = 'text/javascript';
+                script.src = 'https://unpkg.com/@telnyx/webrtc@2/lib/bundle.js';
+
+                script.onload = function() {{
+                    console.log('Telnyx SDK loaded, starting direct call...');
+                    initializeTelnyxDirectCall();
+                }};
+
+                script.onerror = function() {{
+                    console.error('Failed to load Telnyx WebRTC SDK');
+                    alert('Failed to load Telnyx SDK. Please check your connection.');
+                }};
+
+                document.head.appendChild(script);
+            }})();
+        </script>
+        <div style="padding: 5px; text-align: center; font-size: 0.8em; color: #666;">
+            🎧 Telnyx audio active (Direct Call Mode)
+        </div>
+    </div>
+    """
+
+    st.components.v1.html(html_code, height=40)
+
+
 def render_audio_player(play_ringtone: bool = False, play_chime: bool = False, play_beep: bool = False):
     """Render audio player with sound effects.
 
@@ -990,28 +1119,52 @@ else:
 
         # Initiate call if in dialing state
         if st.session_state.dialer_state == 'dialing':
-            with st.spinner("Creating conference and dialing..."):
-                try:
-                    # Call the initiate endpoint (uses static TELEPHONY_SYSTEM env var)
-                    response = api_client.initiate_call_sync(
-                        to_phone=call['formatted_phone'],
-                    )
+            # Telnyx: Direct calling mode (no conference)
+            if PROVIDER == 'telnyx':
+                with st.spinner("Getting WebRTC credentials..."):
+                    try:
+                        # Get SIP credentials for direct calling
+                        response = api_client.get_direct_webrtc_credentials_sync()
 
-                    # Store conference details
-                    st.session_state.current_call['conference_sid'] = response['conference_sid']
-                    st.session_state.current_call['conference_id'] = response['conference_id']
-                    st.session_state.current_call['call_sid'] = response['call_sid']
+                        # Store credentials and call details
+                        st.session_state.current_call['sip_username'] = response['sip_username']
+                        st.session_state.current_call['sip_password'] = response['sip_password']
+                        st.session_state.current_call['to_phone'] = call['formatted_phone']
+                        st.session_state.current_call['from_phone'] = settings.TELNYX_SIP_PHONE_NUMBER if hasattr(settings, 'TELNYX_SIP_PHONE_NUMBER') else ''
 
-                    # Update state
-                    st.session_state.dialer_state = 'connecting'
-                    st.rerun()
+                        # Skip to connected state (no conference to join)
+                        st.session_state.dialer_state = 'connected'
+                        st.rerun()
 
-                except Exception as e:
-                    st.error(f"Failed to initiate call: {str(e)}")
-                    st.session_state.dialer_state = 'ended'
-                    return
+                    except Exception as e:
+                        st.error(f"Failed to get WebRTC credentials: {str(e)}")
+                        st.session_state.dialer_state = 'ended'
+                        return
 
-        # Join WebRTC if in connecting state
+            # Twilio: Conference mode (existing logic)
+            else:
+                with st.spinner("Creating conference and dialing..."):
+                    try:
+                        # Call the initiate endpoint (uses static TELEPHONY_SYSTEM env var)
+                        response = api_client.initiate_call_sync(
+                            to_phone=call['formatted_phone'],
+                        )
+
+                        # Store conference details
+                        st.session_state.current_call['conference_sid'] = response['conference_sid']
+                        st.session_state.current_call['conference_id'] = response['conference_id']
+                        st.session_state.current_call['call_sid'] = response['call_sid']
+
+                        # Update state
+                        st.session_state.dialer_state = 'connecting'
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(f"Failed to initiate call: {str(e)}")
+                        st.session_state.dialer_state = 'ended'
+                        return
+
+        # Join WebRTC if in connecting state (Twilio only - Telnyx skips this)
         if st.session_state.dialer_state == 'connecting':
             with st.spinner("Connecting your browser to the call..."):
                 try:
@@ -1028,9 +1181,6 @@ else:
                     # Store provider-specific WebRTC credentials
                     if PROVIDER == 'twilio':
                         st.session_state.current_call['access_token'] = webrtc_response['access_token']
-                    elif PROVIDER == 'telnyx':
-                        st.session_state.current_call['sip_username'] = webrtc_response['sip_username']
-                        st.session_state.current_call['sip_password'] = webrtc_response['sip_password']
 
                     st.session_state.current_call['participant_sid'] = webrtc_response['participant_sid']
                     st.session_state.current_call['client_id'] = client_id
@@ -1054,11 +1204,12 @@ else:
                     st.session_state.current_call['client_id']
                 )
             elif PROVIDER == 'telnyx':
-                render_telnyx_webrtc_component(
+                # Telnyx: Direct calling (no conference)
+                render_telnyx_direct_webrtc_component(
                     st.session_state.current_call['sip_username'],
                     st.session_state.current_call['sip_password'],
-                    st.session_state.current_call['conference_id'],
-                    st.session_state.current_call['client_id']
+                    st.session_state.current_call['to_phone'],
+                    st.session_state.current_call['from_phone']
                 )
 
             # Status bar with real-time data (will be rendered by fragment below)
