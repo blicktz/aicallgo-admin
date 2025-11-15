@@ -71,16 +71,17 @@ class ColdCallAPIClient:
             return data
 
     async def join_webrtc(self, conference_id: str, client_id: str,
-                         sdp_offer: Optional[str] = None) -> Dict[str, Any]:
+                         provider: str = 'twilio', sdp_offer: Optional[str] = None) -> Dict[str, Any]:
         """Join WebRTC participant to conference.
 
         Args:
             conference_id: Conference identifier
             client_id: Unique identifier for this WebRTC client
+            provider: Telephony provider ('twilio' or 'telnyx')
             sdp_offer: Optional SDP offer from browser
 
         Returns:
-            WebRTC connection details including access token
+            WebRTC connection details (access_token for Twilio, sip_username/password for Telnyx)
 
         Raises:
             httpx.HTTPError: If API request fails
@@ -90,12 +91,13 @@ class ColdCallAPIClient:
         payload = {
             'conference_id': conference_id,
             'client_id': client_id,
+            'provider': provider,
         }
 
         if sdp_offer:
             payload['sdp_offer'] = sdp_offer
 
-        logger.info(f"Joining WebRTC to conference {conference_id}")
+        logger.info(f"Joining WebRTC to conference {conference_id} with provider {provider}")
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
@@ -228,7 +230,7 @@ class ColdCallAPIClient:
         return loop.run_until_complete(self.initiate_call(to_phone, from_phone, provider))
 
     def join_webrtc_sync(self, conference_id: str, client_id: str,
-                        sdp_offer: Optional[str] = None) -> Dict[str, Any]:
+                        provider: str = 'twilio', sdp_offer: Optional[str] = None) -> Dict[str, Any]:
         """Synchronous version of join_webrtc."""
         import asyncio
         try:
@@ -237,7 +239,7 @@ class ColdCallAPIClient:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
-        return loop.run_until_complete(self.join_webrtc(conference_id, client_id, sdp_offer))
+        return loop.run_until_complete(self.join_webrtc(conference_id, client_id, provider, sdp_offer))
 
     def mute_participant_sync(self, conference_sid: str, participant_sid: str,
                              muted: bool = True) -> Dict[str, Any]:

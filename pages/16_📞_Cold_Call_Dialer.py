@@ -213,7 +213,7 @@ def render_telnyx_webrtc_component(sip_username: str, sip_password: str, confere
     """
     html_code = f"""
     <div id="telnyx-webrtc-container">
-        <script src="https://cdn.jsdelivr.net/npm/@telnyx/webrtc@2.x/dist/telnyx.min.js"></script>
+        <script type="text/javascript" src="https://unpkg.com/@telnyx/webrtc@2/lib/bundle.js"></script>
         <script>
             window.addEventListener('load', function() {{
                 try {{
@@ -995,6 +995,7 @@ else:
                     webrtc_response = api_client.join_webrtc_sync(
                         conference_id=st.session_state.current_call['conference_sid'],
                         client_id=client_id,
+                        provider=PROVIDER,  # Pass provider (telnyx or twilio)
                     )
 
                     # Store provider-specific WebRTC credentials
