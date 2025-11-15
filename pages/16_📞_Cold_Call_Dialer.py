@@ -358,16 +358,11 @@ def render_telnyx_direct_webrtc_component(
                         window.telnyxCall = call;
                         window.telnyxClient = client;
 
-                        // Log call ID for debugging (webhooks will track everything)
-                        if (call.id) {{
-                            console.log('Call Control ID:', call.id);
-                        }}
-
-                        // Note: All call tracking is handled by Telnyx webhooks
-                        // - call.initiated: Initial call attempt
-                        // - call.answered: Call connected
-                        // - call.hangup: Call ended
-                        // Recording is configured in Telnyx Portal for auto-recording
+                        // Note: Call tracking and recording are handled automatically by backend webhooks
+                        // - call.initiated: Call attempt logged
+                        // - call.answered: Recording starts automatically
+                        // - call.hangup: Call log created
+                        // - call.recording.saved: Recording uploaded to storage
                     }});
 
                     client.on('telnyx.socket.error', function(error) {{
