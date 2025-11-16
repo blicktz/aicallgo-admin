@@ -551,6 +551,10 @@ def render_realtime_call_status():
     if not st.session_state.get('current_call'):
         return
 
+    # Don't update state if call is ending (prevents race condition with finally block)
+    if st.session_state.get('dialer_state') == 'ended':
+        return
+
     conference_sid = st.session_state.current_call.get('conference_sid')
     if not conference_sid:
         return
@@ -949,6 +953,8 @@ else:
                         }
                         st.session_state.dialer_state = 'dialing'
                         st.session_state.is_muted = False  # Reset mute state for new call
+                        st.session_state.call_state = 'idle'  # Reset call state for new call
+                        st.session_state.previous_participant_count = 0  # Reset participant count for new call
                         st.rerun()
 
         # Expandable Business Insights section
@@ -1327,19 +1333,21 @@ else:
                                 </script>
                             """, height=0)
 
-                            st.session_state.dialer_state = 'ended'
-                            st.rerun()
-
                         # Twilio: Use conference API to end call
                         else:
                             api_client.end_call_sync(
                                 conference_sid=st.session_state.current_call['conference_sid'],
                             )
-                            st.session_state.dialer_state = 'ended'
-                            st.rerun()
 
                     except Exception as e:
                         st.error(f"End call failed: {str(e)}")
+
+                    finally:
+                        # Always reset state when user clicks "End Call", even if API fails
+                        # (e.g., call already ended with -32002 CALL DOES NOT EXIST)
+                        st.session_state.dialer_state = 'ended'
+                        st.session_state.call_state = 'idle'
+                        st.rerun()
 
             st.markdown("---")
 
@@ -1443,6 +1451,7 @@ else:
                     # Clear current call
                     st.session_state.current_call = None
                     st.session_state.dialer_state = 'idle'
+                    st.session_state.call_state = 'idle'  # Reset call state for next call
                     st.rerun()
 
             with col2:
@@ -1450,6 +1459,7 @@ else:
                     # Clear current call
                     st.session_state.current_call = None
                     st.session_state.dialer_state = 'idle'
+                    st.session_state.call_state = 'idle'  # Reset call state for next call
                     st.rerun()
 
     # Show dialer modal if there's an active call
