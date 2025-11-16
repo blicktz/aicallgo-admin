@@ -541,11 +541,11 @@ def fetch_call_status() -> Optional[Dict[str, Any]]:
         return None
 
 
-@st.fragment(run_every="2s")
+@st.fragment(run_every="1s")
 def render_realtime_call_status():
     """Auto-refreshing fragment that displays real-time call status from Redis.
 
-    This fragment auto-refreshes every 2 seconds to show updated call status
+    This fragment auto-refreshes every 1 second to show updated call status
     without requiring manual polling or full page reruns.
     """
     if not st.session_state.get('current_call'):
