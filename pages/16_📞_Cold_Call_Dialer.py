@@ -1304,34 +1304,10 @@ else:
                         if PROVIDER == 'telnyx':
                             # Call backend to hangup via Telnyx API
                             # This ensures proper cleanup and webhook processing
+                            # Note: Telnyx will automatically signal the browser to disconnect
                             api_client.hangup_direct_call_sync(
                                 call_id=st.session_state.current_call['conference_sid']
                             )
-
-                            # Also trigger browser-side hangup for immediate audio disconnection
-                            st.components.v1.html("""
-                                <script>
-                                // Access call from top-level window (cross-iframe)
-                                if (window.top.telnyxCall) {
-                                    try {
-                                        // Call hangup and handle promise rejection
-                                        const hangupPromise = window.top.telnyxCall.hangup();
-                                        if (hangupPromise && hangupPromise.catch) {
-                                            hangupPromise.catch(function(err) {
-                                                // Promise rejection is expected when backend hangs up first
-                                                console.log('Hangup promise rejected (expected):', err.message || err);
-                                            });
-                                        }
-                                        console.log('Call ended via WebRTC SDK');
-                                    } catch (error) {
-                                        // Call may already be ended by backend - this is expected
-                                        console.log('Browser hangup: Call already ended (expected)', error.message);
-                                    }
-                                } else {
-                                    console.error('telnyxCall not found in window.top');
-                                }
-                                </script>
-                            """, height=0)
 
                         # Twilio: Use conference API to end call
                         else:
