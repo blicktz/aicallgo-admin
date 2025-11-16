@@ -14,6 +14,10 @@ import time
 
 # Import authentication
 from config.auth import require_auth
+from config.settings import settings
+
+# Get provider from environment (deployment config)
+PROVIDER = settings.COLD_CALL_PROVIDER.lower()  # 'twilio' or 'telnyx'
 
 # Import cold call components
 from components.cold_call.csv_parser import (
@@ -116,7 +120,7 @@ logger = logging.getLogger(__name__)
 # ====================
 # Helper Functions
 # ====================
-def render_webrtc_component(access_token: str, conference_name: str, client_id: str):
+def render_twilio_webrtc_component(access_token: str, conference_name: str, client_id: str):
     """Render Twilio WebRTC component for browser audio.
 
     Args:
@@ -191,6 +195,242 @@ def render_webrtc_component(access_token: str, conference_name: str, client_id: 
         </script>
         <div style="padding: 5px; text-align: center; font-size: 0.8em; color: #666;">
             🎧 Audio active
+        </div>
+    </div>
+    """
+
+    st.components.v1.html(html_code, height=40)
+
+
+def render_telnyx_webrtc_component(sip_username: str, sip_password: str, conference_id: str, client_id: str):
+    """Render Telnyx WebRTC component for browser audio.
+
+    Args:
+        sip_username: Telnyx SIP username from backend
+        sip_password: Telnyx SIP password from backend
+        conference_id: Conference ID to join
+        client_id: Client identifier for participant labeling
+    """
+    html_code = f"""
+    <div id="telnyx-webrtc-container">
+        <script>
+            // Function to initialize Telnyx after SDK loads
+            function initializeTelnyxWebRTC() {{
+                try {{
+                    console.log('Telnyx WebRTC SDK loaded successfully');
+
+                    // When using bundle.js, access as TelnyxWebRTC.TelnyxRTC
+                    const client = new TelnyxWebRTC.TelnyxRTC({{
+                        login: '{sip_username}',
+                        password: '{sip_password}',
+                        ringbackFile: null,
+                        ringtoneFile: null,
+                    }});
+
+                    client.connect();
+
+                    client.on('telnyx.ready', function() {{
+                        console.log('Telnyx WebRTC Ready');
+                        const call = client.newCall({{
+                            destinationNumber: '{conference_id}',
+                            callerName: '{client_id}',
+                            audio: true,
+                            video: false
+                        }});
+                        console.log('Calling conference:', '{conference_id}');
+                        window.telnyxCall = call;
+                    }});
+
+                    client.on('telnyx.socket.error', function(error) {{
+                        console.error('WebSocket error:', error);
+                        alert('Connection error: ' + (error.message || 'Unknown error'));
+                    }});
+
+                    client.on('telnyx.error', function(error) {{
+                        // Filter out expected errors that shouldn't show alerts
+                        const expectedErrors = [
+                            -32002, // CALL DOES NOT EXIST (happens when call already ended by backend)
+                        ];
+
+                        const errorCode = error?.error?.code;
+                        if (expectedErrors.includes(errorCode)) {{
+                            console.log('Expected Telnyx error (ignoring):', error.error.message);
+                            return; // Don't show alert for expected errors
+                        }}
+
+                        console.error('Telnyx error:', error);
+                        alert('Telnyx error: ' + (error.message || 'Unknown error'));
+                    }});
+
+                    window.telnyxClient = client;
+
+                }} catch (error) {{
+                    console.error('Failed to initialize Telnyx WebRTC:', error);
+                    alert('Failed to initialize Telnyx WebRTC: ' + error.message);
+                }}
+            }}
+
+            // Dynamically load Telnyx SDK and wait for it
+            (function loadTelnyxSDK() {{
+                // Check if SDK already loaded (e.g., from previous render)
+                // Note: bundle.js exports as TelnyxWebRTC.TelnyxRTC
+                if (typeof TelnyxWebRTC !== 'undefined') {{
+                    console.log('Telnyx SDK already loaded, initializing...');
+                    initializeTelnyxWebRTC();
+                    return;
+                }}
+
+                // Create script element
+                const script = document.createElement('script');
+                script.type = 'text/javascript';
+                script.src = 'https://unpkg.com/@telnyx/webrtc@2/lib/bundle.js';
+
+                // Handle successful load
+                script.onload = function() {{
+                    console.log('Telnyx SDK script loaded, initializing...');
+                    initializeTelnyxWebRTC();
+                }};
+
+                // Handle load errors
+                script.onerror = function() {{
+                    console.error('Failed to load Telnyx WebRTC SDK from CDN');
+                    alert('Failed to load Telnyx WebRTC SDK. Please check your internet connection.');
+                }};
+
+                // Add script to page
+                document.head.appendChild(script);
+            }})();
+        </script>
+        <div style="padding: 5px; text-align: center; font-size: 0.8em; color: #666;">
+            🎧 Telnyx audio active
+        </div>
+    </div>
+    """
+
+    st.components.v1.html(html_code, height=40)
+
+
+def render_telnyx_direct_webrtc_component(
+    sip_username: str,
+    sip_password: str,
+    phone_number: str,
+    from_number: str,
+    call_control_id_callback: str = ""
+):
+    """Render Telnyx WebRTC component for DIRECT calling (no conference).
+
+    This is the simplified Telnyx-native approach that makes direct browser-to-phone calls.
+
+    Args:
+        sip_username: Telnyx SIP username
+        sip_password: Telnyx SIP password
+        phone_number: Destination phone number to call directly
+        from_number: Caller ID to use
+        call_control_id_callback: JavaScript code to execute when call_control_id is available
+    """
+    html_code = f"""
+    <div id="telnyx-direct-webrtc-container">
+        <script>
+            // Function to initialize Telnyx for direct calling
+            function initializeTelnyxDirectCall() {{
+                try {{
+                    console.log('Telnyx WebRTC SDK loaded - Direct Calling Mode');
+
+                    const client = new TelnyxWebRTC.TelnyxRTC({{
+                        login: '{sip_username}',
+                        password: '{sip_password}',
+                        ringbackFile: null,
+                        ringtoneFile: null,
+                    }});
+
+                    // Set up remote audio
+                    const audio = document.createElement('audio');
+                    audio.autoplay = true;
+                    audio.id = 'telnyx-remote-audio';
+                    document.body.appendChild(audio);
+                    client.remoteElement = 'telnyx-remote-audio';
+
+                    client.connect();
+
+                    client.on('telnyx.ready', function() {{
+                        console.log('Telnyx WebRTC Ready - Making direct call to {phone_number}');
+
+                        // Direct call to phone number - NO CONFERENCE!
+                        const call = client.newCall({{
+                            destinationNumber: '{phone_number}',
+                            callerNumber: '{from_number}',
+                            audio: true,
+                            video: false
+                        }});
+
+                        console.log('Direct call initiated to {phone_number}');
+
+                        // Store call and client objects in top-level window for cross-iframe access
+                        // This allows mute button (in different iframe) to access the call
+                        window.top.telnyxCall = call;
+                        window.top.telnyxClient = client;
+
+                        // Note: Call tracking and recording are handled automatically by backend webhooks
+                        // - call.initiated: Call attempt logged
+                        // - call.answered: Recording starts automatically
+                        // - call.hangup: Call log created
+                        // - call.recording.saved: Recording uploaded to storage
+                    }});
+
+                    client.on('telnyx.socket.error', function(error) {{
+                        console.error('WebSocket error:', error);
+                        alert('Connection error: ' + (error.message || 'Unknown error'));
+                    }});
+
+                    client.on('telnyx.error', function(error) {{
+                        // Filter out expected errors that shouldn't show alerts
+                        const expectedErrors = [
+                            -32002, // CALL DOES NOT EXIST (happens when call already ended by backend)
+                        ];
+
+                        const errorCode = error?.error?.code;
+                        if (expectedErrors.includes(errorCode)) {{
+                            console.log('Expected Telnyx error (ignoring):', error.error.message);
+                            return; // Don't show alert for expected errors
+                        }}
+
+                        console.error('Telnyx error:', error);
+                        alert('Telnyx error: ' + (error.message || 'Unknown error'));
+                    }});
+
+                }} catch (error) {{
+                    console.error('Failed to initialize Telnyx Direct WebRTC:', error);
+                    alert('Failed to initialize Telnyx: ' + error.message);
+                }}
+            }}
+
+            // Load Telnyx SDK
+            (function loadTelnyxSDK() {{
+                if (typeof TelnyxWebRTC !== 'undefined') {{
+                    console.log('Telnyx SDK already loaded, starting direct call...');
+                    initializeTelnyxDirectCall();
+                    return;
+                }}
+
+                const script = document.createElement('script');
+                script.type = 'text/javascript';
+                script.src = 'https://unpkg.com/@telnyx/webrtc@2/lib/bundle.js';
+
+                script.onload = function() {{
+                    console.log('Telnyx SDK loaded, starting direct call...');
+                    initializeTelnyxDirectCall();
+                }};
+
+                script.onerror = function() {{
+                    console.error('Failed to load Telnyx WebRTC SDK');
+                    alert('Failed to load Telnyx SDK. Please check your connection.');
+                }};
+
+                document.head.appendChild(script);
+            }})();
+        </script>
+        <div style="padding: 5px; text-align: center; font-size: 0.8em; color: #666;">
+            🎧 Telnyx audio active (Direct Call Mode)
         </div>
     </div>
     """
@@ -417,6 +657,7 @@ def render_realtime_call_status():
 # Header
 # ====================
 st.title("📞 Cold Call Dialer")
+st.caption(f"Using {PROVIDER.title()} • Configured in deployment")
 st.markdown("### Upload contacts and make calls directly from your browser")
 st.markdown("---")
 
@@ -888,29 +1129,67 @@ else:
 
         # Initiate call if in dialing state
         if st.session_state.dialer_state == 'dialing':
-            with st.spinner("Creating conference and dialing..."):
-                try:
-                    # Call the initiate endpoint
-                    response = api_client.initiate_call_sync(
-                        to_phone=call['formatted_phone'],
-                        provider='twilio',
-                    )
+            # Telnyx: Direct calling mode (no conference)
+            if PROVIDER == 'telnyx':
+                with st.spinner("Preparing call..."):
+                    try:
+                        # Generate unique call_id for tracking
+                        call_id = f"DIRECT_{uuid.uuid4().hex[:12]}"
 
-                    # Store conference details
-                    st.session_state.current_call['conference_sid'] = response['conference_sid']
-                    st.session_state.current_call['conference_id'] = response['conference_id']
-                    st.session_state.current_call['call_sid'] = response['call_sid']
+                        # Register call with backend before initiating
+                        # This allows webhooks to link call_control_id to call_id
+                        api_client.register_direct_call_sync(
+                            call_id=call_id,
+                            to_phone=call['formatted_phone'],
+                            from_phone=settings.TELNYX_SIP_PHONE_NUMBER if hasattr(settings, 'TELNYX_SIP_PHONE_NUMBER') else ''
+                        )
 
-                    # Update state
-                    st.session_state.dialer_state = 'connecting'
-                    st.rerun()
+                        # Get SIP credentials for direct calling
+                        response = api_client.get_direct_webrtc_credentials_sync()
 
-                except Exception as e:
-                    st.error(f"Failed to initiate call: {str(e)}")
-                    st.session_state.dialer_state = 'ended'
-                    return
+                        # Store credentials and call details
+                        st.session_state.current_call['sip_username'] = response['sip_username']
+                        st.session_state.current_call['sip_password'] = response['sip_password']
+                        st.session_state.current_call['to_phone'] = call['formatted_phone']
+                        st.session_state.current_call['from_phone'] = settings.TELNYX_SIP_PHONE_NUMBER if hasattr(settings, 'TELNYX_SIP_PHONE_NUMBER') else ''
 
-        # Join WebRTC if in connecting state
+                        # Store call_id as conference_sid for consistent polling
+                        st.session_state.current_call['conference_sid'] = call_id
+                        st.session_state.current_call['conference_id'] = call_id
+
+                        # Skip to connected state (no conference to join)
+                        st.session_state.dialer_state = 'connected'
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(f"Failed to prepare call: {str(e)}")
+                        st.session_state.dialer_state = 'ended'
+                        return
+
+            # Twilio: Conference mode (existing logic)
+            else:
+                with st.spinner("Creating conference and dialing..."):
+                    try:
+                        # Call the initiate endpoint (uses static TELEPHONY_SYSTEM env var)
+                        response = api_client.initiate_call_sync(
+                            to_phone=call['formatted_phone'],
+                        )
+
+                        # Store conference details
+                        st.session_state.current_call['conference_sid'] = response['conference_sid']
+                        st.session_state.current_call['conference_id'] = response['conference_id']
+                        st.session_state.current_call['call_sid'] = response['call_sid']
+
+                        # Update state
+                        st.session_state.dialer_state = 'connecting'
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(f"Failed to initiate call: {str(e)}")
+                        st.session_state.dialer_state = 'ended'
+                        return
+
+        # Join WebRTC if in connecting state (Twilio only - Telnyx skips this)
         if st.session_state.dialer_state == 'connecting':
             with st.spinner("Connecting your browser to the call..."):
                 try:
@@ -921,10 +1200,13 @@ else:
                     webrtc_response = api_client.join_webrtc_sync(
                         conference_id=st.session_state.current_call['conference_sid'],
                         client_id=client_id,
+                        provider=PROVIDER,  # Pass provider (telnyx or twilio)
                     )
 
-                    # Store WebRTC details
-                    st.session_state.current_call['access_token'] = webrtc_response['access_token']
+                    # Store provider-specific WebRTC credentials
+                    if PROVIDER == 'twilio':
+                        st.session_state.current_call['access_token'] = webrtc_response['access_token']
+
                     st.session_state.current_call['participant_sid'] = webrtc_response['participant_sid']
                     st.session_state.current_call['client_id'] = client_id
 
@@ -939,12 +1221,21 @@ else:
 
         # Show WebRTC component if connected
         if st.session_state.dialer_state == 'connected':
-            # Render WebRTC component (hidden - minimal height)
-            render_webrtc_component(
-                st.session_state.current_call['access_token'],
-                st.session_state.current_call['conference_sid'],
-                st.session_state.current_call['client_id']
-            )
+            # Render provider-specific WebRTC component
+            if PROVIDER == 'twilio':
+                render_twilio_webrtc_component(
+                    st.session_state.current_call['access_token'],
+                    st.session_state.current_call['conference_sid'],
+                    st.session_state.current_call['client_id']
+                )
+            elif PROVIDER == 'telnyx':
+                # Telnyx: Direct calling (no conference)
+                render_telnyx_direct_webrtc_component(
+                    st.session_state.current_call['sip_username'],
+                    st.session_state.current_call['sip_password'],
+                    st.session_state.current_call['to_phone'],
+                    st.session_state.current_call['from_phone']
+                )
 
             # Status bar with real-time data (will be rendered by fragment below)
             # This section intentionally left minimal - fragment provides live status
@@ -962,17 +1253,40 @@ else:
                         # Toggle the mute state
                         new_mute_state = not st.session_state.is_muted
 
-                        api_client.mute_participant_sync(
-                            conference_sid=st.session_state.current_call['conference_sid'],
-                            participant_sid=st.session_state.current_call['participant_sid'],
-                            muted=new_mute_state,
-                        )
+                        # Handle mute differently based on provider
+                        if PROVIDER == 'telnyx':
+                            # Telnyx: Use client-side WebRTC SDK for mute/unmute
+                            # The Telnyx WebRTC SDK uses muteAudio() and unmuteAudio() methods
+                            mute_action = 'muteAudio' if new_mute_state else 'unmuteAudio'
+                            st.components.v1.html(f"""
+                                <script>
+                                // Access call from top-level window (cross-iframe)
+                                if (window.top.telnyxCall) {{
+                                    window.top.telnyxCall.{mute_action}();
+                                    console.log('Microphone {mute_action}() called via WebRTC SDK');
+                                }} else {{
+                                    console.error('telnyxCall not found in window.top');
+                                }}
+                                </script>
+                            """, height=0)
 
-                        # Update state only after successful API call
-                        st.session_state.is_muted = new_mute_state
+                            # Update state immediately (no backend API call needed)
+                            st.session_state.is_muted = new_mute_state
+                            st.rerun()
 
-                        # Force rerun to sync button label with actual state
-                        st.rerun()
+                        else:
+                            # Twilio: Use backend API for conference participant mute
+                            api_client.mute_participant_sync(
+                                conference_sid=st.session_state.current_call['conference_sid'],
+                                participant_sid=st.session_state.current_call['participant_sid'],
+                                muted=new_mute_state,
+                            )
+
+                            # Update state only after successful API call
+                            st.session_state.is_muted = new_mute_state
+
+                            # Force rerun to sync button label with actual state
+                            st.rerun()
 
                     except Exception as e:
                         st.error(f"Mute toggle failed: {str(e)}")
@@ -980,11 +1294,50 @@ else:
             with col2:
                 if st.button("📴 End Call", use_container_width=True, type="primary", key="end_call_btn"):
                     try:
-                        api_client.end_call_sync(
-                            conference_sid=st.session_state.current_call['conference_sid'],
-                        )
-                        st.session_state.dialer_state = 'ended'
-                        st.rerun()
+                        # Telnyx: Call backend API to properly hangup
+                        if PROVIDER == 'telnyx':
+                            # Call backend to hangup via Telnyx API
+                            # This ensures proper cleanup and webhook processing
+                            api_client.hangup_direct_call_sync(
+                                call_id=st.session_state.current_call['conference_sid']
+                            )
+
+                            # Also trigger browser-side hangup for immediate audio disconnection
+                            st.components.v1.html("""
+                                <script>
+                                // Access call from top-level window (cross-iframe)
+                                if (window.top.telnyxCall) {
+                                    try {
+                                        // Call hangup and handle promise rejection
+                                        const hangupPromise = window.top.telnyxCall.hangup();
+                                        if (hangupPromise && hangupPromise.catch) {
+                                            hangupPromise.catch(function(err) {
+                                                // Promise rejection is expected when backend hangs up first
+                                                console.log('Hangup promise rejected (expected):', err.message || err);
+                                            });
+                                        }
+                                        console.log('Call ended via WebRTC SDK');
+                                    } catch (error) {
+                                        // Call may already be ended by backend - this is expected
+                                        console.log('Browser hangup: Call already ended (expected)', error.message);
+                                    }
+                                } else {
+                                    console.error('telnyxCall not found in window.top');
+                                }
+                                </script>
+                            """, height=0)
+
+                            st.session_state.dialer_state = 'ended'
+                            st.rerun()
+
+                        # Twilio: Use conference API to end call
+                        else:
+                            api_client.end_call_sync(
+                                conference_sid=st.session_state.current_call['conference_sid'],
+                            )
+                            st.session_state.dialer_state = 'ended'
+                            st.rerun()
+
                     except Exception as e:
                         st.error(f"End call failed: {str(e)}")
 

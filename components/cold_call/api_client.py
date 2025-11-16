@@ -31,26 +31,26 @@ class ColdCallAPIClient:
             'X-API-Key': self.api_key,
         }
 
-    async def initiate_call(self, to_phone: str, from_phone: Optional[str] = None,
-                           provider: str = 'twilio') -> Dict[str, Any]:
+    async def initiate_call(self, to_phone: str, from_phone: Optional[str] = None) -> Dict[str, Any]:
         """Initiate a cold call.
 
         Args:
             to_phone: Destination phone number (E.164 format)
             from_phone: Caller ID phone number (E.164 format, optional)
-            provider: Telephony provider ('twilio' or 'telnyx')
 
         Returns:
             Conference details including SIDs and access token
 
         Raises:
             httpx.HTTPError: If API request fails
+
+        Note:
+            Provider is determined by TELEPHONY_SYSTEM environment variable on the server.
         """
         url = f"{self.base_url}/aicallgo/api/v1/cold-call/initiate"
 
         payload = {
             'to_phone': to_phone,
-            'provider': provider,
         }
 
         if from_phone:
@@ -71,16 +71,17 @@ class ColdCallAPIClient:
             return data
 
     async def join_webrtc(self, conference_id: str, client_id: str,
-                         sdp_offer: Optional[str] = None) -> Dict[str, Any]:
+                         provider: str = 'twilio', sdp_offer: Optional[str] = None) -> Dict[str, Any]:
         """Join WebRTC participant to conference.
 
         Args:
             conference_id: Conference identifier
             client_id: Unique identifier for this WebRTC client
+            provider: Telephony provider ('twilio' or 'telnyx')
             sdp_offer: Optional SDP offer from browser
 
         Returns:
-            WebRTC connection details including access token
+            WebRTC connection details (access_token for Twilio, sip_username/password for Telnyx)
 
         Raises:
             httpx.HTTPError: If API request fails
@@ -90,12 +91,13 @@ class ColdCallAPIClient:
         payload = {
             'conference_id': conference_id,
             'client_id': client_id,
+            'provider': provider,
         }
 
         if sdp_offer:
             payload['sdp_offer'] = sdp_offer
 
-        logger.info(f"Joining WebRTC to conference {conference_id}")
+        logger.info(f"Joining WebRTC to conference {conference_id} with provider {provider}")
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
@@ -215,8 +217,7 @@ class ColdCallAPIClient:
                 logger.error(f"[STATUS ERROR] Response: {getattr(e, 'response', None)}")
                 raise
 
-    def initiate_call_sync(self, to_phone: str, from_phone: Optional[str] = None,
-                          provider: str = 'twilio') -> Dict[str, Any]:
+    def initiate_call_sync(self, to_phone: str, from_phone: Optional[str] = None) -> Dict[str, Any]:
         """Synchronous version of initiate_call."""
         import asyncio
         try:
@@ -225,10 +226,10 @@ class ColdCallAPIClient:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
-        return loop.run_until_complete(self.initiate_call(to_phone, from_phone, provider))
+        return loop.run_until_complete(self.initiate_call(to_phone, from_phone))
 
     def join_webrtc_sync(self, conference_id: str, client_id: str,
-                        sdp_offer: Optional[str] = None) -> Dict[str, Any]:
+                        provider: str = 'twilio', sdp_offer: Optional[str] = None) -> Dict[str, Any]:
         """Synchronous version of join_webrtc."""
         import asyncio
         try:
@@ -237,7 +238,7 @@ class ColdCallAPIClient:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
-        return loop.run_until_complete(self.join_webrtc(conference_id, client_id, sdp_offer))
+        return loop.run_until_complete(self.join_webrtc(conference_id, client_id, provider, sdp_offer))
 
     def mute_participant_sync(self, conference_sid: str, participant_sid: str,
                              muted: bool = True) -> Dict[str, Any]:
@@ -272,3 +273,201 @@ class ColdCallAPIClient:
             asyncio.set_event_loop(loop)
 
         return loop.run_until_complete(self.get_status(conference_sid))
+
+    # ============================================================================
+    # Direct Calling Methods (Telnyx WebRTC Direct Mode)
+    # ============================================================================
+
+    async def get_direct_webrtc_credentials(self) -> Dict[str, Any]:
+        """Get SIP credentials for Telnyx WebRTC direct calling.
+
+        Returns:
+            SIP username and password for WebRTC authentication
+
+        Raises:
+            httpx.HTTPError: If API request fails
+        """
+        url = f"{self.base_url}/aicallgo/api/v1/cold-call/direct/webrtc-credentials"
+
+        logger.info("Getting direct WebRTC credentials")
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.get(
+                url,
+                headers=self._get_headers(),
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            logger.info(f"Direct WebRTC credentials retrieved: mode={data.get('mode')}")
+            return data
+
+    async def start_direct_recording(
+        self,
+        call_control_id: str,
+        to_phone: str,
+        from_phone: str
+    ) -> Dict[str, Any]:
+        """Start recording for a direct WebRTC call.
+
+        Args:
+            call_control_id: Call control ID from Telnyx WebRTC SDK
+            to_phone: Destination phone number
+            from_phone: Caller ID
+
+        Returns:
+            Recording start confirmation
+
+        Raises:
+            httpx.HTTPError: If API request fails
+        """
+        url = f"{self.base_url}/aicallgo/api/v1/cold-call/direct/start-recording"
+
+        payload = {
+            'call_control_id': call_control_id,
+            'to_phone': to_phone,
+            'from_phone': from_phone,
+        }
+
+        logger.info(f"Starting recording for direct call: {call_control_id}")
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(
+                url,
+                json=payload,
+                headers=self._get_headers(),
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            logger.info(f"Direct call recording started: {call_control_id}")
+            return data
+
+    def get_direct_webrtc_credentials_sync(self) -> Dict[str, Any]:
+        """Synchronous version of get_direct_webrtc_credentials."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return loop.run_until_complete(self.get_direct_webrtc_credentials())
+
+    def start_direct_recording_sync(
+        self,
+        call_control_id: str,
+        to_phone: str,
+        from_phone: str
+    ) -> Dict[str, Any]:
+        """Synchronous version of start_direct_recording."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return loop.run_until_complete(
+            self.start_direct_recording(call_control_id, to_phone, from_phone)
+        )
+
+    async def register_direct_call(
+        self,
+        call_id: str,
+        to_phone: str,
+        from_phone: str
+    ) -> Dict[str, Any]:
+        """Register a direct call before browser initiates it.
+
+        Args:
+            call_id: Unique identifier generated by frontend
+            to_phone: Destination phone number
+            from_phone: Caller ID
+
+        Returns:
+            Registration confirmation
+
+        Raises:
+            httpx.HTTPError: If API request fails
+        """
+        url = f"{self.base_url}/aicallgo/api/v1/cold-call/direct/register-call"
+
+        payload = {
+            'call_id': call_id,
+            'to_phone': to_phone,
+            'from_phone': from_phone,
+        }
+
+        logger.info(f"Registering direct call: {call_id}")
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(
+                url,
+                json=payload,
+                headers=self._get_headers(),
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            logger.info(f"Direct call registered: {call_id}")
+            return data
+
+    async def hangup_direct_call(self, call_id: str) -> Dict[str, Any]:
+        """Hangup a Telnyx direct call.
+
+        Args:
+            call_id: Call identifier used by frontend
+
+        Returns:
+            Hangup confirmation
+
+        Raises:
+            httpx.HTTPError: If API request fails
+        """
+        url = f"{self.base_url}/aicallgo/api/v1/cold-call/direct/hangup"
+
+        payload = {'call_id': call_id}
+
+        logger.info(f"Hanging up direct call: {call_id}")
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(
+                url,
+                json=payload,
+                headers=self._get_headers(),
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            logger.info(f"Direct call hangup initiated: {call_id}")
+            return data
+
+    def register_direct_call_sync(
+        self,
+        call_id: str,
+        to_phone: str,
+        from_phone: str
+    ) -> Dict[str, Any]:
+        """Synchronous version of register_direct_call."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return loop.run_until_complete(
+            self.register_direct_call(call_id, to_phone, from_phone)
+        )
+
+    def hangup_direct_call_sync(self, call_id: str) -> Dict[str, Any]:
+        """Synchronous version of hangup_direct_call."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return loop.run_until_complete(self.hangup_direct_call(call_id))
