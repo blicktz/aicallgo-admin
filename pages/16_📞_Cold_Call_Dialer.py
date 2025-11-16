@@ -541,14 +541,18 @@ def fetch_call_status() -> Optional[Dict[str, Any]]:
         return None
 
 
-@st.fragment(run_every="2s")
+@st.fragment(run_every="1s")
 def render_realtime_call_status():
     """Auto-refreshing fragment that displays real-time call status from Redis.
 
-    This fragment auto-refreshes every 2 seconds to show updated call status
+    This fragment auto-refreshes every 1 second to show updated call status
     without requiring manual polling or full page reruns.
     """
     if not st.session_state.get('current_call'):
+        return
+
+    # Don't update state if call is ending (prevents race condition with finally block)
+    if st.session_state.get('dialer_state') == 'ended':
         return
 
     conference_sid = st.session_state.current_call.get('conference_sid')
@@ -949,6 +953,8 @@ else:
                         }
                         st.session_state.dialer_state = 'dialing'
                         st.session_state.is_muted = False  # Reset mute state for new call
+                        st.session_state.call_state = 'idle'  # Reset call state for new call
+                        st.session_state.previous_participant_count = 0  # Reset participant count for new call
                         st.rerun()
 
         # Expandable Business Insights section
@@ -1298,48 +1304,26 @@ else:
                         if PROVIDER == 'telnyx':
                             # Call backend to hangup via Telnyx API
                             # This ensures proper cleanup and webhook processing
+                            # Note: Telnyx will automatically signal the browser to disconnect
                             api_client.hangup_direct_call_sync(
                                 call_id=st.session_state.current_call['conference_sid']
                             )
-
-                            # Also trigger browser-side hangup for immediate audio disconnection
-                            st.components.v1.html("""
-                                <script>
-                                // Access call from top-level window (cross-iframe)
-                                if (window.top.telnyxCall) {
-                                    try {
-                                        // Call hangup and handle promise rejection
-                                        const hangupPromise = window.top.telnyxCall.hangup();
-                                        if (hangupPromise && hangupPromise.catch) {
-                                            hangupPromise.catch(function(err) {
-                                                // Promise rejection is expected when backend hangs up first
-                                                console.log('Hangup promise rejected (expected):', err.message || err);
-                                            });
-                                        }
-                                        console.log('Call ended via WebRTC SDK');
-                                    } catch (error) {
-                                        // Call may already be ended by backend - this is expected
-                                        console.log('Browser hangup: Call already ended (expected)', error.message);
-                                    }
-                                } else {
-                                    console.error('telnyxCall not found in window.top');
-                                }
-                                </script>
-                            """, height=0)
-
-                            st.session_state.dialer_state = 'ended'
-                            st.rerun()
 
                         # Twilio: Use conference API to end call
                         else:
                             api_client.end_call_sync(
                                 conference_sid=st.session_state.current_call['conference_sid'],
                             )
-                            st.session_state.dialer_state = 'ended'
-                            st.rerun()
 
                     except Exception as e:
                         st.error(f"End call failed: {str(e)}")
+
+                    finally:
+                        # Always reset state when user clicks "End Call", even if API fails
+                        # (e.g., call already ended with -32002 CALL DOES NOT EXIST)
+                        st.session_state.dialer_state = 'ended'
+                        st.session_state.call_state = 'idle'
+                        st.rerun()
 
             st.markdown("---")
 
@@ -1443,6 +1427,7 @@ else:
                     # Clear current call
                     st.session_state.current_call = None
                     st.session_state.dialer_state = 'idle'
+                    st.session_state.call_state = 'idle'  # Reset call state for next call
                     st.rerun()
 
             with col2:
@@ -1450,6 +1435,7 @@ else:
                     # Clear current call
                     st.session_state.current_call = None
                     st.session_state.dialer_state = 'idle'
+                    st.session_state.call_state = 'idle'  # Reset call state for next call
                     st.rerun()
 
     # Show dialer modal if there's an active call
