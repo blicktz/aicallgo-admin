@@ -7,6 +7,11 @@ import json
 from config.auth import require_auth
 from database.connection import get_session
 from services.agent_service import get_agents, get_agent_by_id
+from services.scheduling_service import (
+    get_scheduling_config,
+    update_scheduling_config,
+    get_user_id_from_agent
+)
 from components.tables import render_dataframe
 from utils.formatters import (
     format_datetime,
@@ -44,6 +49,10 @@ with col3:
 # Initialize session state for selected agent
 if "selected_agent_id" not in st.session_state:
     st.session_state.selected_agent_id = None
+
+# Initialize session state for editing appointment settings
+if "editing_appointment_settings" not in st.session_state:
+    st.session_state.editing_appointment_settings = False
 
 # Load agents
 def load_agents(search, tone, page_num, per_page):
@@ -169,6 +178,151 @@ with detail_col:
                 st.markdown(f"**1-800 Blocking:** {format_enabled_disabled(agent.enable_1800_blocking)}")
                 st.markdown(f"**Sales Detection:** {format_enabled_disabled(agent.enable_sales_detection)}")
                 st.markdown(f"**Call Transfer:** {format_enabled_disabled(agent.enable_call_transfer)}")
+
+                st.divider()
+
+                # Appointment Settings
+                st.markdown("#### Appointment Settings")
+
+                # Get user_id for this agent to fetch scheduling config
+                with get_session() as session:
+                    user_id = get_user_id_from_agent(session, str(agent.id))
+
+                if user_id:
+                    with get_session() as session:
+                        try:
+                            scheduling_config = get_scheduling_config(session, user_id)
+
+                            if scheduling_config:
+                                # Display current settings
+                                display_mode = scheduling_config.appointment_time_display_mode
+                                window_minutes = scheduling_config.appointment_window_duration_minutes
+
+                                # Show current configuration
+                                mode_label = "Exact Time" if display_mode == "exact_time" else "Time Range (Arrival Window)"
+                                st.markdown(f"**Time Display Mode:** {mode_label}")
+
+                                if display_mode == "time_range":
+                                    # Show window duration
+                                    hours = window_minutes / 60
+                                    if window_minutes == 30:
+                                        duration_label = "30 minutes"
+                                    elif window_minutes == 60:
+                                        duration_label = "1 hour"
+                                    elif window_minutes == 90:
+                                        duration_label = "1.5 hours"
+                                    elif window_minutes == 120:
+                                        duration_label = "2 hours"
+                                    elif window_minutes == 150:
+                                        duration_label = "2.5 hours"
+                                    elif window_minutes == 180:
+                                        duration_label = "3 hours"
+                                    else:
+                                        duration_label = f"{window_minutes} minutes"
+
+                                    st.markdown(f"**Arrival Window Duration:** {duration_label}")
+
+                                    # Show preview
+                                    st.info(f"📋 **Preview:** The AI will say: *'I have an opening with an arrival window between 9 AM and 11 AM on Tuesday'*")
+                                else:
+                                    st.info(f"📋 **Preview:** The AI will say: *'I have an opening at 9 AM on Tuesday'*")
+
+                                # Edit button
+                                if st.button("📝 Edit Appointment Settings", use_container_width=True, type="secondary"):
+                                    st.session_state.editing_appointment_settings = True
+                                    st.rerun()
+
+                                # Show edit form if editing
+                                if st.session_state.editing_appointment_settings:
+                                    st.markdown("---")
+                                    st.markdown("##### Edit Appointment Settings")
+
+                                    with st.form("edit_appointment_settings"):
+                                        # Time display mode
+                                        new_display_mode = st.radio(
+                                            "Appointment Time Display",
+                                            options=["exact_time", "time_range"],
+                                            format_func=lambda x: "Exact Time" if x == "exact_time" else "Time Range (Arrival Window)",
+                                            index=0 if display_mode == "exact_time" else 1,
+                                            help="Choose how appointment times are presented to callers"
+                                        )
+
+                                        # Window duration (only show if time_range selected)
+                                        new_window_minutes = window_minutes
+                                        if new_display_mode == "time_range":
+                                            duration_options = {
+                                                "30 minutes": 30,
+                                                "1 hour": 60,
+                                                "1.5 hours": 90,
+                                                "2 hours": 120,
+                                                "2.5 hours": 150,
+                                                "3 hours": 180
+                                            }
+
+                                            # Find current selection index
+                                            current_label = next(
+                                                (k for k, v in duration_options.items() if v == window_minutes),
+                                                "2 hours"  # default
+                                            )
+
+                                            selected_duration = st.selectbox(
+                                                "Arrival Window Duration",
+                                                options=list(duration_options.keys()),
+                                                index=list(duration_options.keys()).index(current_label),
+                                                help="How long the arrival window should be"
+                                            )
+
+                                            new_window_minutes = duration_options[selected_duration]
+
+                                            # Preview message
+                                            st.info(
+                                                f"🔍 **Preview:** The AI will tell callers: "
+                                                f"*'I have an opening with an arrival window between 9 AM and 11 AM on Tuesday. "
+                                                f"Our technician will arrive during that time.'*"
+                                            )
+                                        else:
+                                            st.info(
+                                                f"🔍 **Preview:** The AI will tell callers: "
+                                                f"*'I have an opening at 9 AM on Tuesday'*"
+                                            )
+
+                                        # Form buttons
+                                        col1, col2 = st.columns(2)
+                                        with col1:
+                                            save_button = st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True)
+                                        with col2:
+                                            cancel_button = st.form_submit_button("❌ Cancel", use_container_width=True)
+
+                                        if save_button:
+                                            try:
+                                                # Update configuration with separate session
+                                                with get_session() as update_session:
+                                                    update_scheduling_config(
+                                                        update_session,
+                                                        user_id,
+                                                        new_display_mode,
+                                                        new_window_minutes
+                                                    )
+
+                                                st.success("✅ Appointment settings updated successfully!")
+                                                st.session_state.editing_appointment_settings = False
+                                                st.cache_data.clear()
+                                                st.rerun()
+
+                                            except Exception as e:
+                                                st.error(f"❌ Failed to update settings: {str(e)}")
+
+                                        if cancel_button:
+                                            st.session_state.editing_appointment_settings = False
+                                            st.rerun()
+
+                            else:
+                                st.info("No appointment scheduling configuration found for this agent")
+
+                        except Exception as e:
+                            st.error(f"Failed to load appointment settings: {str(e)}")
+                else:
+                    st.info("Cannot load appointment settings (no associated user found)")
 
                 st.divider()
 
