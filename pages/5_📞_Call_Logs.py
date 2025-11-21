@@ -4,6 +4,7 @@ Call Logs - Browse call records filtered by business
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
+import logging
 from datetime import datetime, timedelta
 from config.auth import require_auth
 from database.connection import get_session
@@ -12,6 +13,8 @@ from services.business_service import get_businesses
 from services.recording_service import get_recording_service
 from utils.formatters import format_datetime, format_phone, format_duration, format_status_badge, parse_transcript_json
 from components.call_monitoring_panel import render_monitoring_panel
+
+logger = logging.getLogger(__name__)
 
 # Auth check
 if not require_auth():
@@ -188,6 +191,7 @@ with calls_col:
                 calls_summary_df = pd.DataFrame([
                     {
                         "Caller": format_phone(call.caller_phone_number),
+                        "To Number": format_phone(call.to_phone_number) if call.to_phone_number else "—",
                         "Name": call.caller_name or "—",
                         "Direction": call.call_direction,
                         "Time": format_datetime(call.call_start_time, format_str='%Y-%m-%d %H:%M'),
@@ -279,6 +283,11 @@ with calls_col:
                                             session=db_session,
                                             call_sid=selected_call.twilio_call_sid
                                         )
+                                        # Get recording object for download URL
+                                        recording = recording_service.get_recording_by_call_sid(
+                                            session=db_session,
+                                            call_sid=selected_call.twilio_call_sid
+                                        )
 
                                     if recording_info:
                                         # Show recording metadata
@@ -295,6 +304,23 @@ with calls_col:
 
                                         # Streamlit native audio player
                                         st.audio(recording_info["url"])
+
+                                        # Download button
+                                        if recording and recording.internal_recording_url:
+                                            try:
+                                                download_info = recording_service.generate_download_url(
+                                                    recording.internal_recording_url,
+                                                    selected_call.twilio_call_sid
+                                                )
+                                                # Extract format from filename (e.g., "recording-CAxx.mp3" -> "MP3")
+                                                file_format = download_info["filename"].split('.')[-1].upper()
+                                                st.link_button(
+                                                    f"📥 Download {file_format}",
+                                                    download_info["url"],
+                                                    use_container_width=True
+                                                )
+                                            except Exception as e:
+                                                logger.warning(f"Failed to generate download URL: {e}")
 
                                         # Expiration notice
                                         try:

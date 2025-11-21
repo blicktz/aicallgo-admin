@@ -227,6 +227,77 @@ class RecordingService:
             # Default to mp3 if extension is unclear
             return "audio/mpeg"
 
+    def generate_download_url(
+        self, internal_recording_url: str, call_sid: str, expiration: Optional[int] = None
+    ) -> dict:
+        """
+        Generate presigned URL for recording download with attachment disposition.
+
+        Args:
+            internal_recording_url: B2 URL to the recording
+            call_sid: Twilio call SID for filename
+            expiration: URL expiration in seconds (default: 1 hour)
+
+        Returns:
+            Dict with:
+            - url: Presigned URL for download
+            - expires_at: Expiration timestamp
+            - filename: Suggested filename
+
+        Raises:
+            ValueError: If URL is invalid or B2 credentials missing
+            ClientError: If B2 API call fails
+        """
+        if not internal_recording_url:
+            raise ValueError("Recording URL is empty")
+
+        expiration = expiration or self.url_expiration_seconds
+
+        try:
+            # Extract B2 key from URL
+            b2_key = self._extract_b2_key_from_url(internal_recording_url)
+
+            # Get B2 client
+            b2_client = self._get_b2_client()
+
+            # Determine file extension
+            file_extension = "mp3" if b2_key.endswith(".mp3") else "wav"
+            filename = f"recording-{call_sid}.{file_extension}"
+
+            # Generate presigned URL with download disposition
+            presigned_url = b2_client.generate_presigned_url(
+                "get_object",
+                Params={
+                    "Bucket": self.b2_bucket,
+                    "Key": b2_key,
+                    "ResponseContentDisposition": f'attachment; filename="{filename}"'
+                },
+                ExpiresIn=expiration,
+            )
+
+            # Calculate expiration timestamp
+            expires_at = datetime.utcnow()
+            from datetime import timedelta
+            expires_at = expires_at + timedelta(seconds=expiration)
+
+            logger.info(
+                f"Generated download URL for {b2_key}, expires at {expires_at}"
+            )
+
+            return {
+                "url": presigned_url,
+                "expires_at": expires_at.isoformat() + "Z",
+                "filename": filename,
+            }
+
+        except ClientError as e:
+            error_code = e.response["Error"]["Code"]
+            logger.error(f"B2 ClientError while generating download URL: {error_code}")
+            raise
+        except Exception as e:
+            logger.error(f"Error generating download URL: {e}")
+            raise
+
     def get_recording_playback_info(
         self, session: Session, call_sid: str
     ) -> Optional[dict]:
