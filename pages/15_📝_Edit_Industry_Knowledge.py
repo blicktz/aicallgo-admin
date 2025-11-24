@@ -39,85 +39,154 @@ def render_call_type_form(call_type: dict, key_prefix: str):
     Returns:
         Dictionary with updated values
     """
-    call_type_name = call_type.get("call_type_name", "Unknown")
+    st.markdown("### ✏️ All Fields Are Editable")
 
-    st.subheader(f"📞 {call_type_name}")
+    # Basic Information Section
+    st.markdown("#### Basic Information")
+    col1, col2 = st.columns(2)
 
-    # Read-only sections (displayed as info)
-    with st.expander("📋 Call Type Details (Template - Read Only)", expanded=False):
-        st.markdown("**Caller Intent:**")
-        st.info(call_type.get("caller_intent", "N/A"))
+    with col1:
+        call_type_name = st.text_input(
+            "Call Type Name",
+            value=call_type.get("call_type_name", ""),
+            key=f"{key_prefix}_name",
+            help="Name of this call type"
+        )
 
-        st.markdown("**Agent Primary Goal:**")
-        st.info(call_type.get("agent_primary_goal", "N/A"))
+    with col2:
+        urgency_level = st.selectbox(
+            "Urgency Level",
+            options=["emergency", "urgent", "routine"],
+            index=["emergency", "urgent", "routine"].index(
+                call_type.get("urgency_level", "routine")
+            ) if call_type.get("urgency_level") in ["emergency", "urgent", "routine"] else 2,
+            key=f"{key_prefix}_urgency",
+            help="How urgent is this type of call?"
+        )
 
-        # Conversation flow
-        conversation_flow = call_type.get("conversation_flow", {})
-        if conversation_flow:
-            st.markdown("**Empathy Statement:**")
-            st.info(conversation_flow.get("empathy_statement", "N/A"))
+    col3, col4 = st.columns(2)
+    with col3:
+        can_self_diagnose = st.checkbox(
+            "Can Self Diagnose",
+            value=call_type.get("can_self_diagnose", False),
+            key=f"{key_prefix}_diagnose",
+            help="Can the caller self-diagnose this issue?"
+        )
 
-            st.markdown("**Key Questions:**")
-            key_questions = conversation_flow.get("key_questions", [])
-            if key_questions:
-                for i, question in enumerate(key_questions, 1):
-                    st.markdown(f"{i}. {question}")
-            else:
-                st.info("No key questions defined")
-
-        st.markdown("**Desired Outcome:**")
-        st.info(call_type.get("desired_outcome", "N/A"))
-
-        # Urgency metadata (if present)
-        urgency_level = call_type.get("urgency_level")
-        requires_same_day = call_type.get("requires_same_day")
-        can_self_diagnose = call_type.get("can_self_diagnose")
-
-        if urgency_level or requires_same_day is not None or can_self_diagnose is not None:
-            st.markdown("**Urgency Metadata:**")
-            cols = st.columns(3)
-            if urgency_level:
-                cols[0].metric("Urgency Level", urgency_level.title())
-            if requires_same_day is not None:
-                cols[1].metric("Same Day Required", "Yes" if requires_same_day else "No")
-            if can_self_diagnose is not None:
-                cols[2].metric("Can Self Diagnose", "Yes" if can_self_diagnose else "No")
+    with col4:
+        requires_same_day = st.checkbox(
+            "Requires Same Day Service",
+            value=call_type.get("requires_same_day", False),
+            key=f"{key_prefix}_same_day",
+            help="Does this typically require same-day service?"
+        )
 
     st.markdown("---")
 
-    # Editable fields
-    st.markdown("### ✏️ Editable Fields")
+    # Intent and Goals Section
+    st.markdown("#### Intent and Goals")
+
+    caller_intent = st.text_area(
+        "Caller Intent",
+        value=call_type.get("caller_intent", ""),
+        height=100,
+        key=f"{key_prefix}_intent",
+        help="What is the caller's intent when making this type of call?"
+    )
+
+    agent_primary_goal = st.text_area(
+        "Agent Primary Goal",
+        value=call_type.get("agent_primary_goal", ""),
+        height=100,
+        key=f"{key_prefix}_goal",
+        help="What should the AI agent's primary goal be for this call type?"
+    )
+
+    desired_outcome = st.text_area(
+        "Desired Outcome",
+        value=call_type.get("desired_outcome", ""),
+        height=100,
+        key=f"{key_prefix}_outcome",
+        help="What is the ideal outcome for this type of call?"
+    )
+
+    st.markdown("---")
+
+    # Conversation Flow Section
+    st.markdown("#### Conversation Flow")
+
+    conversation_flow = call_type.get("conversation_flow", {})
+
+    empathy_statement = st.text_area(
+        "Empathy Statement",
+        value=conversation_flow.get("empathy_statement", ""),
+        height=80,
+        key=f"{key_prefix}_empathy",
+        help="Opening empathy statement the AI should use"
+    )
+
+    # Key Questions - Dynamic List
+    st.markdown("**Key Questions**")
+    st.caption("Questions the AI should ask during the call")
+
+    # Initialize session state for key questions if not exists
+    questions_key = f"{key_prefix}_questions"
+    if questions_key not in st.session_state:
+        st.session_state[questions_key] = conversation_flow.get("key_questions", [""])
+
+    key_questions = []
+    for i, question in enumerate(st.session_state[questions_key]):
+        col_q, col_btn = st.columns([6, 1])
+        with col_q:
+            q_value = st.text_input(
+                f"Question {i+1}",
+                value=question,
+                key=f"{key_prefix}_q_{i}",
+                label_visibility="collapsed"
+            )
+            key_questions.append(q_value)
+        with col_btn:
+            if st.button("🗑️", key=f"{key_prefix}_del_{i}", help="Remove question"):
+                st.session_state[questions_key].pop(i)
+                st.rerun()
+
+    if st.button("➕ Add Question", key=f"{key_prefix}_add_q"):
+        st.session_state[questions_key].append("")
+        st.rerun()
+
+    # Filter out empty questions
+    key_questions = [q for q in key_questions if q.strip()]
 
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("**Information to Provide** *(Customized for this business)*")
-        # information_to_provide is nested inside conversation_flow
-        conversation_flow = call_type.get("conversation_flow", {})
         information_to_provide = st.text_area(
-            "What information should the agent provide to the caller?",
+            "Information to Provide",
             value=conversation_flow.get("information_to_provide", ""),
-            height=200,
+            height=150,
             key=f"{key_prefix}_info",
-            help="Business-specific information the AI should share with callers for this call type"
+            help="Business-specific information the AI should share with callers"
         )
-        char_count_info = len(information_to_provide)
-        st.caption(f"Characters: {char_count_info}")
 
     with col2:
-        st.markdown("**Fallback Procedure** *(What to do when AI can't help)*")
         fallback_procedure = st.text_area(
-            "What should happen if the agent cannot fully assist?",
+            "Fallback Procedure",
             value=call_type.get("fallback_procedure", ""),
-            height=200,
+            height=150,
             key=f"{key_prefix}_fallback",
-            help="Fallback steps when the AI cannot provide a complete solution"
+            help="What to do when the AI cannot fully assist"
         )
-        char_count_fallback = len(fallback_procedure)
-        st.caption(f"Characters: {char_count_fallback}")
 
     return {
         "call_type_name": call_type_name,
+        "urgency_level": urgency_level,
+        "can_self_diagnose": can_self_diagnose,
+        "requires_same_day": requires_same_day,
+        "caller_intent": caller_intent,
+        "agent_primary_goal": agent_primary_goal,
+        "desired_outcome": desired_outcome,
+        "empathy_statement": empathy_statement,
+        "key_questions": key_questions,
         "information_to_provide": information_to_provide,
         "fallback_procedure": fallback_procedure
     }
@@ -228,10 +297,27 @@ def main():
                     # Validate required fields
                     validation_errors = []
                     for i, update in enumerate(updates):
+                        call_type_name = update["call_type_name"]
+
+                        # Required text fields
+                        if not call_type_name.strip():
+                            validation_errors.append(f"Call Type #{i+1}: Call Type Name is required")
+                        if not update["caller_intent"].strip():
+                            validation_errors.append(f"'{call_type_name}': Caller Intent is required")
+                        if not update["agent_primary_goal"].strip():
+                            validation_errors.append(f"'{call_type_name}': Agent Primary Goal is required")
+                        if not update["desired_outcome"].strip():
+                            validation_errors.append(f"'{call_type_name}': Desired Outcome is required")
+                        if not update["empathy_statement"].strip():
+                            validation_errors.append(f"'{call_type_name}': Empathy Statement is required")
                         if not update["information_to_provide"].strip():
-                            validation_errors.append(f"'{update['call_type_name']}': Information to Provide is required")
+                            validation_errors.append(f"'{call_type_name}': Information to Provide is required")
                         if not update["fallback_procedure"].strip():
-                            validation_errors.append(f"'{update['call_type_name']}': Fallback Procedure is required")
+                            validation_errors.append(f"'{call_type_name}': Fallback Procedure is required")
+
+                        # Key questions should have at least one
+                        if not update["key_questions"] or len(update["key_questions"]) == 0:
+                            validation_errors.append(f"'{call_type_name}': At least one Key Question is required")
 
                     if validation_errors:
                         st.error("❌ Validation Errors:")
