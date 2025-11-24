@@ -195,6 +195,12 @@ def render_call_type_form(call_type: dict, key_prefix: str):
 def main():
     """Main function for Edit Industry Knowledge page."""
 
+    # Initialize error/success persistence in session state
+    if 'save_error' not in st.session_state:
+        st.session_state.save_error = None
+    if 'save_success' not in st.session_state:
+        st.session_state.save_success = None
+
     # Get agent_id from session_state (fallback to query_params for direct URL access)
     # Note: st.switch_page() clears query_params, so we use session_state
     # Move temporary session state to persistent session state for this page
@@ -215,6 +221,31 @@ def main():
 
     # Render breadcrumb
     render_breadcrumb(business_name)
+
+    # Display persisted error/success messages at top (survives redirects)
+    if st.session_state.save_error:
+        st.error(f"""
+❌ **Previous Save Error** (persisted)
+
+{st.session_state.save_error}
+
+*This error persisted across page reloads. Click below to clear.*
+""")
+        if st.button("🗑️ Clear Error Message", type="secondary"):
+            st.session_state.save_error = None
+            st.rerun()
+
+    if st.session_state.save_success:
+        st.success(f"""
+✅ **Previous Save Success** (persisted)
+
+{st.session_state.save_success}
+
+*This message persisted across page reloads. Click below to clear.*
+""")
+        if st.button("🗑️ Clear Success Message", type="secondary"):
+            st.session_state.save_success = None
+            st.rerun()
 
     # Fetch agent data
     with st.spinner("Loading agent configuration..."):
@@ -285,6 +316,17 @@ def main():
                         help="Save all changes to industry knowledge"
                     )
 
+                # Debug Info Section (expandable)
+                st.markdown("---")
+                with st.expander("🔧 Debug Information (for troubleshooting)", expanded=False):
+                    st.markdown("**Data that will be sent to API:**")
+                    st.json({
+                        "agent_id": agent_id,
+                        "num_call_types": len(updates),
+                        "call_types_updates": updates
+                    })
+                    st.caption("This shows the exact data that will be sent when you click Save")
+
                 # Handle cancel button
                 if cancel_button:
                     st.info("Changes discarded. Redirecting to Agents page...")
@@ -327,6 +369,8 @@ def main():
                         # Save changes
                         with st.spinner("Saving changes..."):
                             try:
+                                from datetime import datetime
+
                                 result = update_industry_knowledge(
                                     agent_id=agent_id,
                                     call_types_updates=updates
@@ -344,13 +388,84 @@ def main():
                                 # Clear all caches to ensure fresh data on navigation
                                 st.cache_data.clear()
 
-                                # Redirect to Agents page after successful save
-                                st.switch_page("pages/4_🤖_Agents.py")
+                                # Save success to session state (persists across any redirects)
+                                success_msg = f"""Industry knowledge updated successfully!
+- Updated: {len(updates)} call types
+- Agent: {agent.agent_name}
+- Business: {business_name}
+- Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+Your changes have been saved to the database."""
+                                st.session_state.save_success = success_msg
+                                st.session_state.save_error = None  # Clear any previous errors
+
+                                # Show success feedback
+                                st.toast("✅ Changes saved successfully!", icon="✅")
+
+                                st.success(f"""
+✅ **Industry knowledge updated successfully!**
+
+- **Updated**: {len(updates)} call types
+- **Agent**: {agent.agent_name}
+- **Business**: {business_name}
+- **Timestamp**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+✨ Your changes have been saved to the database. You can continue editing or return to the Agents page.
+""")
+
+                                # Clear session state for key questions to force reload from DB
+                                keys_to_clear = [key for key in st.session_state.keys() if 'questions' in key]
+                                for key in keys_to_clear:
+                                    del st.session_state[key]
+
+                                # DON'T call st.rerun() - let user see the success message
+                                # They can manually navigate away or continue editing
 
                             except Exception as e:
-                                st.toast(f"❌ Failed to save changes: {str(e)}", icon="❌")
-                                st.error(f"❌ Failed to save changes: {str(e)}")
+                                # Save error to session state (PERSISTS even if page redirects!)
+                                error_details = f"""Exception Type: {type(e).__name__}
+Exception Message: {str(e)}
+Agent ID: {agent_id}
+Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
+                                st.session_state.save_error = error_details
+                                st.session_state.save_success = None  # Clear any previous success
+
+                                # Enhanced error handling
+                                error_msg = str(e)
+                                st.toast(f"❌ Save failed: {error_msg}", icon="❌")
+
+                                st.error(f"""
+❌ **Failed to save changes**
+
+**Error**: {error_msg}
+
+**Possible causes**:
+- Network connection issue
+- Backend service not running
+- Invalid data format
+- Database connection problem
+
+**What to do**:
+1. Check that web-backend service is running
+2. Verify your network connection
+3. Try saving again
+4. Contact support if the problem persists
+
+**Note**: This error has been saved to session state and will persist even if the page redirects.
+""")
+
+                                # Show detailed error in expander for debugging
+                                with st.expander("🔍 Technical Details (for debugging)"):
+                                    st.code(f"Agent ID: {agent_id}")
+                                    st.code(f"Error Type: {type(e).__name__}")
+                                    st.code(f"Error Message: {error_msg}")
+                                    if hasattr(e, 'response'):
+                                        st.code(f"HTTP Status: {getattr(e.response, 'status_code', 'N/A')}")
+                                        st.code(f"Response: {getattr(e.response, 'text', 'N/A')}")
+
                                 logger.error(f"Failed to update industry knowledge: {e}", exc_info=True)
+
+                                # DON'T call st.rerun() - let user see the error
 
         except Exception as e:
             st.error(f"❌ Error loading agent: {str(e)}")
