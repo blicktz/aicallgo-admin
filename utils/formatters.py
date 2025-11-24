@@ -5,6 +5,7 @@ from decimal import Decimal
 from datetime import datetime, timedelta
 import pytz
 import phonenumbers
+from phonenumbers import NumberParseException
 import humanize
 from typing import Optional
 
@@ -462,3 +463,39 @@ def parse_transcript_json(transcript_str: Optional[str]) -> dict:
         "metadata": {},
         "is_json": False
     }
+
+
+def normalize_phone_number(phone_input: str, country: str = "US") -> Optional[str]:
+    """
+    Normalize phone number to E.164 format for exact matching.
+
+    Args:
+        phone_input: Phone number in any format
+        country: Country code for parsing (default: US)
+
+    Returns:
+        E.164 formatted phone number (e.g., "+15551234567") or None if invalid
+
+    Examples:
+        normalize_phone_number("(555) 123-4567") -> "+15551234567"
+        normalize_phone_number("+1 555-123-4567") -> "+15551234567"
+        normalize_phone_number("invalid") -> None
+    """
+    if not phone_input or not phone_input.strip():
+        return None
+
+    try:
+        # Parse the phone number
+        parsed = phonenumbers.parse(phone_input, country)
+
+        # Validate before formatting
+        if not phonenumbers.is_valid_number(parsed):
+            return None
+
+        # Format to E.164
+        return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+
+    except NumberParseException:
+        return None
+    except Exception:
+        return None

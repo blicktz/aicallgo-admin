@@ -11,7 +11,7 @@ from database.connection import get_session
 from services.call_log_service import get_calls_by_business, count_calls_by_business
 from services.business_service import get_businesses
 from services.recording_service import get_recording_service
-from utils.formatters import format_datetime, format_phone, format_duration, format_status_badge, parse_transcript_json
+from utils.formatters import format_datetime, format_phone, format_duration, format_status_badge, parse_transcript_json, normalize_phone_number
 from components.call_monitoring_panel import render_monitoring_panel
 
 logger = logging.getLogger(__name__)
@@ -31,28 +31,93 @@ except Exception as e:
     st.warning(f"⚠️ Monitoring panel unavailable: {str(e)}")
     st.divider()
 
-# Top panel: Filters (4 columns)
-col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
+# Initialize session state for selected business and call
+if "selected_business_id" not in st.session_state:
+    st.session_state.selected_business_id = None
+if "selected_call_id" not in st.session_state:
+    st.session_state.selected_call_id = None
 
-with col1:
-    # Use correct call statuses from backend schema
-    status_filter = st.selectbox(
-        "Status",
-        ["all", "completed", "failed", "hangup", "blocked_sales",
-         "blocked_1800", "declined_no_credit", "in_progress", "forwarded"]
-    )
+# Initialize session state for phone filters
+if "from_phone_filter" not in st.session_state:
+    st.session_state.from_phone_filter = None
+if "to_phone_filter" not in st.session_state:
+    st.session_state.to_phone_filter = None
 
-with col2:
-    business_name_search = st.text_input("🏢 Business Name", placeholder="Search business name...")
+# Top panel: Filters with Form for phone numbers
+with st.form(key="phone_filter_form", clear_on_submit=False):
+    col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 1])
 
-with col3:
-    phone_search = st.text_input("📱 Phone Number", placeholder="Search phone...")
+    with col1:
+        # Use correct call statuses from backend schema
+        status_filter = st.selectbox(
+            "Status",
+            ["all", "completed", "failed", "hangup", "blocked_sales",
+             "blocked_1800", "declined_no_credit", "in_progress", "forwarded"]
+        )
 
-with col4:
-    date_range = st.selectbox("Date Range", ["7 days", "30 days", "90 days", "All"])
-    if st.button("🔄 Refresh"):
+    with col2:
+        # From Phone No. filter
+        from_phone_input = st.text_input(
+            "📞 From Phone No.",
+            placeholder="Enter phone number...",
+            help="Filter by caller phone"
+        )
+
+    with col3:
+        # To Phone No. filter
+        to_phone_input = st.text_input(
+            "📱 To Phone No.",
+            placeholder="Enter phone number...",
+            help="Filter by recipient phone"
+        )
+
+    with col4:
+        date_range = st.selectbox("Date Range", ["7 days", "30 days", "90 days", "All"])
+
+    with col5:
+        # Form submit button
+        st.write("")  # Spacer to align button
+        st.write("")  # Spacer to align button
+        submitted = st.form_submit_button("Apply", use_container_width=True)
+
+# Process form submission
+if submitted:
+    # Process From Phone filter
+    if from_phone_input.strip():
+        if not st.session_state.selected_business_id:
+            st.warning("⚠️ Please select a business first to filter call logs")
+        else:
+            normalized = normalize_phone_number(from_phone_input)
+            if normalized:
+                st.session_state.from_phone_filter = normalized
+                st.cache_data.clear()
+            else:
+                st.warning("⚠️ Invalid phone number format for 'From Phone No.'")
+    else:
+        # Clear from filter if input is empty
+        st.session_state.from_phone_filter = None
         st.cache_data.clear()
-        st.rerun()
+
+    # Process To Phone filter
+    if to_phone_input.strip():
+        if not st.session_state.selected_business_id:
+            st.warning("⚠️ Please select a business first to filter call logs")
+        else:
+            normalized = normalize_phone_number(to_phone_input)
+            if normalized:
+                st.session_state.to_phone_filter = normalized
+                st.cache_data.clear()
+            else:
+                st.warning("⚠️ Invalid phone number format for 'To Phone No.'")
+    else:
+        # Clear to filter if input is empty
+        st.session_state.to_phone_filter = None
+        st.cache_data.clear()
+
+# Refresh button outside form
+if st.button("🔄 Refresh", key="refresh_button"):
+    st.cache_data.clear()
+    st.rerun()
 
 # Calculate date range
 date_from = None
@@ -63,28 +128,20 @@ elif date_range == "30 days":
 elif date_range == "90 days":
     date_from = datetime.utcnow() - timedelta(days=90)
 
-# Initialize session state for selected business and call
-if "selected_business_id" not in st.session_state:
-    st.session_state.selected_business_id = None
-if "selected_call_id" not in st.session_state:
-    st.session_state.selected_call_id = None
-
-# Load businesses with filters
+# Load businesses without filters
 @st.cache_data(ttl=60)
-def load_businesses(name_search, phone_search):
-    """Load businesses with filters"""
+def load_businesses():
+    """Load all businesses"""
     with get_session() as session:
         return get_businesses(
             session,
             limit=100,
-            offset=0,
-            search_query=name_search if name_search else None,
-            phone_search=phone_search if phone_search else None
+            offset=0
         )
 
 # Load call logs for selected business
 @st.cache_data(ttl=60)
-def load_call_logs(business_id, status, date_from_str):
+def load_call_logs(business_id, status, date_from_str, from_phone, to_phone):
     """Load call logs with filters for a specific business"""
     with get_session() as session:
         # Convert date string back to datetime if needed
@@ -96,7 +153,9 @@ def load_call_logs(business_id, status, date_from_str):
             limit=500,  # Load up to 500 calls for scrolling
             offset=0,
             status_filter=status if status != "all" else None,
-            date_from=date_from_dt
+            date_from=date_from_dt,
+            from_phone_filter=from_phone,
+            to_phone_filter=to_phone
         )
 
         # Get total count
@@ -104,7 +163,9 @@ def load_call_logs(business_id, status, date_from_str):
             session,
             business_id,
             status_filter=status if status != "all" else None,
-            date_from=date_from_dt
+            date_from=date_from_dt,
+            from_phone_filter=from_phone,
+            to_phone_filter=to_phone
         )
 
         return calls, total_count
@@ -117,7 +178,7 @@ with business_col:
     st.markdown("### Businesses")
 
     try:
-        businesses = load_businesses(business_name_search, phone_search)
+        businesses = load_businesses()
 
         if not businesses:
             st.info("No businesses found")
@@ -164,22 +225,44 @@ with calls_col:
     st.markdown("### Call Logs")
 
     if not st.session_state.selected_business_id:
-        st.info("👈 Select a business from the list to view call logs")
+        st.info("👈 Select a business from the list to view and filter call logs")
     else:
         try:
             # Convert date to string for caching
             date_from_str = date_from.isoformat() if date_from else None
 
-            # Load call logs for selected business
+            # Load call logs for selected business with phone filters
             call_logs, total_count = load_call_logs(
                 st.session_state.selected_business_id,
                 status_filter,
-                date_from_str
+                date_from_str,
+                st.session_state.from_phone_filter,
+                st.session_state.to_phone_filter
             )
 
             if not call_logs:
                 st.info("No call logs found for this business")
             else:
+                # Display filter indicator if any filters are active
+                filter_parts = []
+                if st.session_state.from_phone_filter:
+                    filter_parts.append(f"From: {format_phone(st.session_state.from_phone_filter)}")
+                if st.session_state.to_phone_filter:
+                    filter_parts.append(f"To: {format_phone(st.session_state.to_phone_filter)}")
+
+                if filter_parts:
+                    filter_text = " | ".join(filter_parts)
+                    col_filter, col_clear = st.columns([4, 1])
+                    with col_filter:
+                        st.info(f"🔍 **Filtering by:** {filter_text}")
+                    with col_clear:
+                        if st.button("Clear Filters", key="clear_phone_filters"):
+                            # Clear filter values
+                            st.session_state.from_phone_filter = None
+                            st.session_state.to_phone_filter = None
+                            st.cache_data.clear()
+                            st.rerun()
+
                 # Display count and info
                 showing = len(call_logs)
                 if showing < total_count:
@@ -532,7 +615,9 @@ if st.button("📥 Export Current View to CSV", use_container_width=True):
             call_logs, _ = load_call_logs(
                 st.session_state.selected_business_id,
                 status_filter,
-                date_from_str
+                date_from_str,
+                st.session_state.from_phone_filter,
+                st.session_state.to_phone_filter
             )
 
             if not call_logs:

@@ -99,7 +99,9 @@ def get_calls_by_business(
     offset: int = 0,
     status_filter: Optional[str] = None,
     date_from: Optional[datetime] = None,
-    date_to: Optional[datetime] = None
+    date_to: Optional[datetime] = None,
+    from_phone_filter: Optional[str] = None,
+    to_phone_filter: Optional[str] = None
 ) -> List[CallLog]:
     """
     Get call logs for a specific business with pagination and filters.
@@ -112,6 +114,8 @@ def get_calls_by_business(
         status_filter: Filter by call status
         date_from: Start date filter
         date_to: End date filter
+        from_phone_filter: Filter by caller phone (normalized E.164 format)
+        to_phone_filter: Filter by recipient phone (normalized E.164 format)
 
     Returns:
         List of CallLog objects for the business
@@ -122,6 +126,12 @@ def get_calls_by_business(
         # Apply status filter
         if status_filter and status_filter.lower() != "all":
             query = query.where(CallLog.call_status == status_filter)
+
+        # Apply phone number filters
+        if from_phone_filter:
+            query = query.where(CallLog.caller_phone_number == from_phone_filter)
+        if to_phone_filter:
+            query = query.where(CallLog.to_phone_number == to_phone_filter)
 
         # Apply date range filters
         if date_from:
@@ -148,7 +158,9 @@ def count_calls_by_business(
     business_id: str,
     status_filter: Optional[str] = None,
     date_from: Optional[datetime] = None,
-    date_to: Optional[datetime] = None
+    date_to: Optional[datetime] = None,
+    from_phone_filter: Optional[str] = None,
+    to_phone_filter: Optional[str] = None
 ) -> int:
     """
     Count call logs for a specific business with filters.
@@ -159,6 +171,8 @@ def count_calls_by_business(
         status_filter: Filter by call status
         date_from: Start date filter
         date_to: End date filter
+        from_phone_filter: Filter by caller phone (normalized E.164 format)
+        to_phone_filter: Filter by recipient phone (normalized E.164 format)
 
     Returns:
         Total count of CallLog records matching filters
@@ -169,6 +183,12 @@ def count_calls_by_business(
         # Apply status filter
         if status_filter and status_filter.lower() != "all":
             query = query.where(CallLog.call_status == status_filter)
+
+        # Apply phone number filters
+        if from_phone_filter:
+            query = query.where(CallLog.caller_phone_number == from_phone_filter)
+        if to_phone_filter:
+            query = query.where(CallLog.to_phone_number == to_phone_filter)
 
         # Apply date range filters
         if date_from:
