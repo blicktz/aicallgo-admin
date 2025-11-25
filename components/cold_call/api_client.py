@@ -275,6 +275,214 @@ class ColdCallAPIClient:
         return loop.run_until_complete(self.get_status(conference_sid))
 
     # ============================================================================
+    # Audio Playback Methods (Twilio-only feature)
+    # ============================================================================
+
+    async def get_audio_files(self) -> list[Dict[str, Any]]:
+        """Get available audio files for playback.
+
+        Returns:
+            List of audio file information dicts
+
+        Raises:
+            httpx.HTTPError: If API request fails
+        """
+        url = f"{self.base_url}/aicallgo/api/v1/cold-call/audio-files"
+
+        logger.info("Fetching audio files")
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.get(
+                url,
+                headers=self._get_headers(),
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            logger.info(f"Audio files retrieved: {len(data)} files")
+            return data
+
+    async def control_audio_playback(
+        self,
+        conference_sid: str,
+        audio_id: str,
+        action: str,
+    ) -> Dict[str, Any]:
+        """Control audio playback in conference.
+
+        Args:
+            conference_sid: Conference SID
+            audio_id: Audio file ID to play
+            action: Action to perform ('play' or 'stop')
+
+        Returns:
+            Audio playback control result
+
+        Raises:
+            httpx.HTTPError: If API request fails
+        """
+        url = f"{self.base_url}/aicallgo/api/v1/cold-call/control/audio-playback"
+
+        payload = {
+            'conference_sid': conference_sid,
+            'audio_id': audio_id,
+            'action': action,
+        }
+
+        logger.info(f"Controlling audio playback: {action} {audio_id} in {conference_sid}")
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(
+                url,
+                json=payload,
+                headers=self._get_headers(),
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            logger.info(f"Audio playback control successful: {data.get('message')}")
+            return data
+
+    def get_audio_files_sync(self) -> list[Dict[str, Any]]:
+        """Synchronous version of get_audio_files."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return loop.run_until_complete(self.get_audio_files())
+
+    def control_audio_playback_sync(
+        self,
+        conference_sid: str,
+        audio_id: str,
+        action: str,
+    ) -> Dict[str, Any]:
+        """Synchronous version of control_audio_playback."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return loop.run_until_complete(
+            self.control_audio_playback(conference_sid, audio_id, action)
+        )
+
+    async def add_audio_player(self, conference_sid: str) -> Dict[str, Any]:
+        """Add audio player participant to conference.
+
+        This endpoint adds a TwiML App participant that enables bidirectional
+        audio streaming for audio playback in Twilio conferences. Must be called
+        after conference creation, before using audio playback controls.
+
+        Args:
+            conference_sid: Conference SID to add audio player to
+
+        Returns:
+            Result dict with success status, conference_sid, call_sid, and message
+
+        Raises:
+            httpx.HTTPError: If API request fails
+        """
+        url = f"{self.base_url}/aicallgo/api/v1/cold-call/add-audio-player/{conference_sid}"
+
+        logger.info(f"Adding audio player participant to conference {conference_sid}")
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(
+                url,
+                headers=self._get_headers(),
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            logger.info(f"Audio player added: call_sid={data.get('call_sid')}")
+            return data
+
+    def add_audio_player_sync(self, conference_sid: str) -> Dict[str, Any]:
+        """Synchronous version of add_audio_player."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return loop.run_until_complete(self.add_audio_player(conference_sid))
+
+    def add_audio_player_with_retry_sync(
+        self,
+        conference_sid: str,
+        max_attempts: int = 10,
+        delay_ms: int = 500,
+    ) -> Dict[str, Any]:
+        """Add audio player participant with retry logic.
+
+        Retries if conference not found (may still be initializing).
+        Conference creation happens asynchronously when browser joins,
+        so we need to poll until it's ready.
+
+        Args:
+            conference_sid: Conference SID to add audio player to
+            max_attempts: Maximum retry attempts (default: 10)
+            delay_ms: Delay between retries in milliseconds (default: 500)
+
+        Returns:
+            Result dict from successful add_audio_player call
+
+        Raises:
+            httpx.HTTPError: If all retries fail
+        """
+        import time
+
+        last_error = None
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                # Try to add audio player
+                result = self.add_audio_player_sync(conference_sid)
+                logger.info(f"Audio player added successfully on attempt {attempt}")
+                return result
+
+            except httpx.HTTPStatusError as e:
+                last_error = e
+
+                # Only retry on 404 (conference not found)
+                if e.response.status_code == 404:
+                    if attempt < max_attempts:
+                        logger.info(
+                            f"Conference not ready, retrying in {delay_ms}ms "
+                            f"(attempt {attempt}/{max_attempts})"
+                        )
+                        time.sleep(delay_ms / 1000.0)
+                        continue
+                    else:
+                        logger.error(
+                            f"Conference not ready after {max_attempts} attempts"
+                        )
+                else:
+                    # Other HTTP errors - don't retry
+                    logger.error(f"HTTP error {e.response.status_code}, not retrying")
+                    raise
+
+            except Exception as e:
+                # Network errors or other issues - retry
+                last_error = e
+                if attempt < max_attempts:
+                    logger.warning(f"Error on attempt {attempt}: {str(e)}, retrying...")
+                    time.sleep(delay_ms / 1000.0)
+                    continue
+                else:
+                    logger.error(f"Failed after {max_attempts} attempts: {str(e)}")
+
+        # All retries exhausted
+        raise last_error or Exception("Failed to add audio player after retries")
+
+    # ============================================================================
     # Direct Calling Methods (Telnyx WebRTC Direct Mode)
     # ============================================================================
 
