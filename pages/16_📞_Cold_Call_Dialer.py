@@ -85,6 +85,18 @@ if 'play_beep' not in st.session_state:
 if 'is_muted' not in st.session_state:
     st.session_state.is_muted = False
 
+if 'audio_files' not in st.session_state:
+    st.session_state.audio_files = []
+
+if 'playing_audio_id' not in st.session_state:
+    st.session_state.playing_audio_id = None
+
+if 'audio_player_ready' not in st.session_state:
+    st.session_state.audio_player_ready = False
+
+if 'audio_setup_attempt' not in st.session_state:
+    st.session_state.audio_setup_attempt = 0
+
 # Initialize API client
 api_client = ColdCallAPIClient()
 
@@ -955,6 +967,8 @@ else:
                         st.session_state.is_muted = False  # Reset mute state for new call
                         st.session_state.call_state = 'idle'  # Reset call state for new call
                         st.session_state.previous_participant_count = 0  # Reset participant count for new call
+                        st.session_state.audio_player_ready = False  # Reset audio player state for new call
+                        st.session_state.audio_setup_attempt = 0  # Reset retry counter for new call
                         st.rerun()
 
         # Expandable Business Insights section
@@ -1234,6 +1248,38 @@ else:
                     st.session_state.current_call['conference_sid'],
                     st.session_state.current_call['client_id']
                 )
+
+                # Add audio player participant for Twilio conferences (one-time setup with retry)
+                if not st.session_state.audio_player_ready:
+                    # Initialize retry state if needed
+                    if 'audio_setup_attempt' not in st.session_state:
+                        st.session_state.audio_setup_attempt = 0
+
+                    retry_msg = ' (retrying...)' if st.session_state.audio_setup_attempt > 0 else '...'
+                    with st.spinner(f"Setting up audio playback{retry_msg}"):
+                        try:
+                            # Use retry method (polls until conference is ready)
+                            api_client.add_audio_player_with_retry_sync(
+                                conference_sid=st.session_state.current_call['conference_sid'],
+                                max_attempts=10,  # 10 attempts
+                                delay_ms=500,     # 500ms between attempts (max 5 seconds total)
+                            )
+                            st.session_state.audio_player_ready = True
+                            st.session_state.audio_setup_attempt = 0
+                            logger.info("Audio player participant added to conference")
+                        except Exception as e:
+                            st.session_state.audio_setup_attempt += 1
+                            logger.error(f"Failed to add audio player: {str(e)}")
+
+                            # Show user-friendly error message
+                            if 'Conference not found' in str(e) or '404' in str(e):
+                                st.error("⏱️ Conference setup timed out. Please try ending and restarting the call.")
+                            else:
+                                st.warning(f"⚠️ Audio playback unavailable: {str(e)}")
+
+                            # Don't block the call, just disable audio features
+                            st.session_state.audio_player_ready = False
+
             elif PROVIDER == 'telnyx':
                 # Telnyx: Direct calling (no conference)
                 render_telnyx_direct_webrtc_component(
@@ -1326,6 +1372,84 @@ else:
                         st.rerun()
 
             st.markdown("---")
+
+            # Audio Playback Controls (Twilio-only feature)
+            if PROVIDER == 'twilio':
+                st.subheader("🎵 Audio Playback")
+
+                # Check if audio player is ready
+                if not st.session_state.audio_player_ready:
+                    st.info("⏳ Setting up audio player...")
+                else:
+                    # Load audio files if not already loaded
+                    if not st.session_state.audio_files:
+                        try:
+                            st.session_state.audio_files = api_client.get_audio_files_sync()
+                        except Exception as e:
+                            st.warning(f"Audio playback not available: {str(e)}")
+
+                    if st.session_state.audio_files:
+                        # Create button grid for audio files (3 columns)
+                        num_files = len(st.session_state.audio_files)
+                        num_rows = (num_files + 2) // 3  # Ceiling division for 3 columns
+
+                        for row in range(num_rows):
+                            cols = st.columns(3)
+                            for col_idx in range(3):
+                                file_idx = row * 3 + col_idx
+                                if file_idx < num_files:
+                                    audio_file = st.session_state.audio_files[file_idx]
+
+                                    with cols[col_idx]:
+                                        # Determine button state
+                                        is_playing = (st.session_state.playing_audio_id == audio_file['id'])
+
+                                        if is_playing:
+                                            btn_label = f"⏹️ Stop {audio_file['display_name']}"
+                                            btn_type = "secondary"
+                                            btn_disabled = False
+                                        else:
+                                            btn_label = f"▶️ {audio_file['display_name']}"
+                                            btn_type = "primary"
+                                            # Disable if another audio is playing
+                                            btn_disabled = (st.session_state.playing_audio_id is not None)
+
+                                        if st.button(
+                                            btn_label,
+                                            use_container_width=True,
+                                            type=btn_type,
+                                            disabled=btn_disabled,
+                                            key=f"audio_{audio_file['id']}_btn",
+                                            help=f"{audio_file['name']} ({audio_file['duration_seconds']}s)",
+                                        ):
+                                            try:
+                                                if is_playing:
+                                                    # Stop audio
+                                                    api_client.control_audio_playback_sync(
+                                                        conference_sid=st.session_state.current_call['conference_sid'],
+                                                        audio_id=audio_file['id'],
+                                                        action='stop',
+                                                    )
+                                                    st.session_state.playing_audio_id = None
+                                                    st.success(f"Stopped {audio_file['name']}")
+                                                else:
+                                                    # Play audio
+                                                    api_client.control_audio_playback_sync(
+                                                        conference_sid=st.session_state.current_call['conference_sid'],
+                                                        audio_id=audio_file['id'],
+                                                        action='play',
+                                                    )
+                                                    st.session_state.playing_audio_id = audio_file['id']
+                                                    st.success(f"Playing {audio_file['name']}")
+
+                                                st.rerun()
+
+                                            except Exception as e:
+                                                st.error(f"Audio control failed: {str(e)}")
+
+                        st.markdown("---")
+                    else:
+                        st.info("No audio files configured")
 
             # Real-time status panel with compact display
             render_realtime_call_status()
