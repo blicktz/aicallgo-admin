@@ -414,6 +414,41 @@ class ColdCallAPIClient:
 
         return loop.run_until_complete(self.add_audio_player(conference_sid))
 
+    async def reload_audio_from_b2(self) -> Dict[str, Any]:
+        """Reload all audio files from B2 storage without restarting service.
+
+        Returns:
+            Result dict with success status, files_cached, files_failed, cache_dir, total_size_bytes
+
+        Raises:
+            httpx.HTTPError: If API request fails
+        """
+        url = f"{self.base_url}/aicallgo/api/v1/cold-call/reload-audio"
+
+        logger.info("Reloading audio files from B2 storage")
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(
+                url,
+                headers=self._get_headers(),
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            logger.info(f"Audio reload complete: {data.get('files_cached')}/{data.get('files_cached', 0) + data.get('files_failed', 0)} files cached")
+            return data
+
+    def reload_audio_from_b2_sync(self) -> Dict[str, Any]:
+        """Synchronous version of reload_audio_from_b2."""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return loop.run_until_complete(self.reload_audio_from_b2())
+
     def add_audio_player_with_retry_sync(
         self,
         conference_sid: str,
