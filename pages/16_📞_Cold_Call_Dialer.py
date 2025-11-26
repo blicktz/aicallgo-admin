@@ -672,8 +672,25 @@ def render_realtime_call_status():
 # ====================
 # Header
 # ====================
-st.title("📞 Cold Call Dialer")
-st.caption(f"Using {PROVIDER.title()} • Configured in deployment")
+# Title and Reload Audio button
+col1, col2 = st.columns([4, 1])
+with col1:
+    st.title("📞 Cold Call Dialer")
+    st.caption(f"Using {PROVIDER.title()} • Configured in deployment")
+with col2:
+    # Reload audio button - always visible
+    st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)  # Spacing
+    if st.button("🔄 Reload Audio", use_container_width=True, key="reload_audio_btn"):
+        with st.spinner("Reloading audio files from B2 storage..."):
+            try:
+                result = api_client.reload_audio_from_b2_sync()
+                if result.get('success'):
+                    st.success(f"✅ {result.get('message')}\n\nCached: {result.get('files_cached')} files ({result.get('total_size_bytes', 0) / 1024:.1f} KB)")
+                else:
+                    st.warning(f"⚠️ {result.get('message')}")
+            except Exception as e:
+                st.error(f"❌ Failed to reload audio: {str(e)}")
+
 st.markdown("### Upload contacts and make calls directly from your browser")
 st.markdown("---")
 
